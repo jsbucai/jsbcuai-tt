@@ -1,0 +1,96 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="UTF-8">
+  <title>扫描枪输入测试</title>
+  <style>
+    body {
+      font-family: Arial, sans-serif;
+      text-align: center;
+    }
+
+    #scan-input {
+      font-size: 24px;
+      padding: 10px;
+      width: 50%;
+      max-width: 500px;
+      margin: 50px auto;
+      border: 2px solid #ccc;
+      border-radius: 10px;
+      outline: none;
+      transition: border-color 0.3s ease-in-out;
+    }
+
+    #scan-input:focus {
+      border-color: #007bff;
+    }
+
+    button {
+      font-size: 18px;
+      padding: 10px 20px;
+      background-color: #007bff;
+      color: #fff;
+      border: none;
+      border-radius: 5px;
+      cursor: pointer;
+      transition: background-color 0.3s ease-in-out;
+    }
+
+    button:hover {
+      background-color: #0062cc;
+    }
+  </style>
+</head>
+<body>
+  <h1>扫描枪输入测试</h1>
+  <input id="scan-input" type="text" placeholder="请用扫描枪扫描条码">
+  <button id="save-btn">保存扫描结果</button>
+  <button id="reset-btn">开始新扫描</button>
+
+  <script>
+    const scanInput = document.getElementById('scan-input');
+    const saveBtn = document.getElementById('save-btn');
+    const resetBtn = document.getElementById('reset-btn');
+    let scanData = '';
+
+    // 给输入框设置焦点
+    scanInput.focus();
+
+    // 监听输入框的键盘按下事件
+    scanInput.addEventListener('keydown', function(event) {
+      // 如果按下的是回车键
+      if (event.keyCode === 13) {
+        // 阻止默认的回车提交行为
+        event.preventDefault();
+
+        // 播放提示音
+        const audio = new Audio('beep.mp3');
+        audio.play();
+
+        // 将扫描结果添加到数据字符串中
+        scanData += scanInput.value.trim() + '\n';
+
+        // 清空输入框
+        scanInput.value = '';
+      }
+    });
+
+    // 点击保存按钮，将数据字符串保存到文本文件中
+    saveBtn.addEventListener('click', function() {
+      const blob = new Blob([scanData], { type: 'text/plain;charset=utf-8' });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = 'scan_data.txt';
+      document.body.appendChild(a);
+      a.click();
+    });
+
+    // 点击开始新扫描按钮，清空数据字符串并设置输入框聚焦
+    resetBtn.addEventListener('click', function() {
+      scanData = '';
+      scanInput.focus();
+    });
+  </script>
+</body>
+</html>
