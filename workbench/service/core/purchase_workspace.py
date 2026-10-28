@@ -212,6 +212,45 @@ def history_preview(db, idents):
     return preview
 
 
+def _job_result(job):
+    result = job.get('result') if isinstance(job, dict) else None
+    return result if isinstance(result, dict) else {}
+
+
+def refresh_published(job):
+    """True when the update job already published the ERP read."""
+    result = _job_result(job)
+    return result.get('published') is True or result.get('query_status') == 'published'
+
+
+def refresh_outcome(job):
+    """Settle a purchase refresh from the update job.
+
+    ``unknown`` after a published read is still a successful order refresh:
+    the uncertain row is a logistics check, not a failed publication.
+    A complete stage with published data is the same. Only an unpublished
+    or genuinely failed job fails the refresh.
+    """
+    if not isinstance(job, dict):
+        return 'failed'
+    status = text(job.get('status'))
+    if status in {'queued', 'running'}:
+        return ''
+    published = refresh_published(job)
+    if status == 'succeeded' or (status == 'unknown' and published) or (text(job.get('stage')) == 'complete' and published):
+        return 'succeeded'
+    return 'failed'
+
+
+def refresh_notice(job):
+    if refresh_outcome(job) != 'succeeded':
+        return ''
+    result = _job_result(job)
+    if text(job.get('status')) != 'succeeded' or result.get('unknown'):
+        return '部分核对待确认'
+    return ''
+
+
 def authorize(user):
     if not isinstance(user, dict) or not (_is_admin(user) or 'purchase' in _roles(user)):
         raise PurchaseConflict('需要采购岗位或管理员权限', 'purchase_role_required', 403)
@@ -231,14 +270,39 @@ def same_origin(app):
 
 
 class PurchaseWorkspace:
-    def __init__(self, store):
+    def __init__(self, store, submission=None):
         self.store = store
         self.stop_event = Event()
         with store.connect(write=True) as db:
             ensure(db)
             from .purchase_workspace_files import schema
             schema(db)
+        if submission is None:
+            from .purchase_submission import PurchaseSubmission
+            submission = PurchaseSubmission(store)
+        self.submission = submission
         self.rebuild()
+
+    def erp_submit_status(self):
+        """Draft ERP submit stays off unless both env flags and a verified adapter are present."""
+        enabled = self.submission._writing_allowed()
+        ready = bool(enabled and self.submission.ready())
+        cap = getattr(self.submission.adapter, 'capabilities', None)
+        readback = bool(getattr(cap, 'readback_contract_verified', False) and getattr(cap, 'complete_unique_lookup', False))
+        if ready and not readback:
+            message = '进货订单写入已开放。只调用 erp.purchaseorder.add，不付款、不审核。含税成交价先除以 1.13，未税成交价原样作为未税折前单价，税率 13%，单据金额为价税合计。官方没有草稿字段，也没有按单号回查。写入后请到管家婆按单据编号人工核对未审核。'
+        elif ready:
+            message = '采购订单草稿试写已开放。只创建未审核草稿，不付款、不审核；结果不明时只回查。'
+        elif enabled:
+            message = '采购 ERP 草稿开关已打开，但写入和回查合同尚未验收，不会向 ERP 发送。'
+        else:
+            message = '采购 API 合同验收前，实际成交记录可保存，ERP 提交暂未开放'
+        return {'erp_submit_enabled': enabled, 'erp_draft_ready': ready, 'erp_readback_available': readback,
+                'browser_enabled': False, 'message': message}
+
+    def submit_erp_draft(self, user, body):
+        authorize(user)
+        return self.submission.submit(user, body)
 
     def rebuild(self, force=False):
         try:
@@ -358,7 +422,14 @@ class PurchaseWorkspace:
             preview = history_preview(db, [x['id'] for x in page_items])
             output = []
             cached_board = read_customer_cache(db, token)
-            board = cached_board['rows'] if cached_board else customer_board(items)
+            # A missing or empty cache is recomputed from the current index.
+            # Never serve a blank board just because refresh cleared the cache.
+            if cached_board and cached_board.get('rows'):
+                board = cached_board['rows']
+                cache_state = 'hit'
+            else:
+                board = customer_board(items)
+                cache_state = 'miss'
             for x in page_items:
                 slim = {k: v for k, v in x.items() if k not in {'demands', 'customers'}}
                 slim['history_preview'] = preview.get(x['id'], [])
@@ -367,15 +438,16 @@ class PurchaseWorkspace:
                     slim.update(customer_need(x, customer))
                 output.append(slim)
             payload = {'items': output, 'total': total, 'page': page, 'page_size': size,
-                'customer_board': board, 'customer_cache': 'hit' if cached_board else 'miss',
+                'customer_board': board, 'customer_cache': cache_state,
                 'source_token': token, 'source_current': current, 'source_updated_at': setting(db, 'data_source_updated_at'),
                 'counts': counts, 'facets': facets, 'suppliers': [{**s, **{
                     **summaries[s['id']], 'quantity': number(summaries[s['id']]['quantity'])}} for s in self.suppliers(db)],
                 'refresh': self.refresh_status(db),
                 'history_coverage': json.loads(db.execute("SELECT value FROM purchase_workspace_meta WHERE key='history_coverage'").fetchone()[0])}
-        if not cached_board:
+        if cache_state == 'miss':
             with self.store.connect(write=True) as db:
-                if not read_customer_cache(db, token):
+                current_cache = read_customer_cache(db, token)
+                if not current_cache or current_cache.get('rows') != board:
                     write_customer_cache(db, token, board, '*')
         return payload
 
@@ -669,7 +741,15 @@ class PurchaseWorkspace:
     @staticmethod
     def refresh_status(db):
         row = db.execute('SELECT * FROM purchase_workspace_refresh ORDER BY rowid DESC LIMIT 1').fetchone()
-        return dict(row) if row else None
+        if not row:
+            return None
+        item = dict(row)
+        try:
+            parsed = json.loads(item.get('result') or '{}')
+        except (TypeError, json.JSONDecodeError):
+            parsed = {}
+        item['result'] = parsed if isinstance(parsed, dict) else {}
+        return item
 
     def request_refresh(self, user, body):
         authorize(user)
@@ -774,10 +854,11 @@ class PurchaseWorkspace:
         for item in waiting:
             if item['status'] == 'running':
                 job = updates.get(item['job_id'])
-                if job['status'] in {'queued', 'running'}:
+                outcome = refresh_outcome(job)
+                if not outcome:
                     continue
                 current = False
-                if job['status'] == 'succeeded':
+                if outcome == 'succeeded':
                     result=self.rebuild()
                     with self.store.connect() as db:
                         _,current=self._source(db)
@@ -785,9 +866,27 @@ class PurchaseWorkspace:
                         continue
                     if current:
                         self._remember_watermark()
+                job_result = _job_result(job)
+                payload = {'job_status': job.get('status'), 'stage': job.get('stage')}
+                if 'published' in job_result:
+                    payload['published'] = job_result.get('published') is True
+                if job_result.get('query_status'):
+                    payload['query_status'] = job_result.get('query_status')
+                if job_result.get('unknown') is not None:
+                    payload['unknown'] = job_result.get('unknown')
+                if job_result.get('logistics_status'):
+                    payload['logistics_status'] = job_result.get('logistics_status')
+                if outcome == 'succeeded' and current:
+                    notice = refresh_notice(job)
+                    if notice:
+                        payload['notice'] = notice
+                    status = 'succeeded'
+                else:
+                    status = 'failed'
+                    payload['message'] = text(job_result.get('message')) or '订单刷新没有完成，已保留上一次的客户卡片。'
                 with self.store.connect(write=True) as db:
                     db.execute('UPDATE purchase_workspace_refresh SET status=?,result=?,updated_at=? WHERE id=?',
-                               ('succeeded' if job['status'] == 'succeeded' and current else 'failed', dumps({'job_status': job['status']}), timestamp(), item['id']))
+                               (status, dumps(payload), timestamp(), item['id']))
             else:
                 with self.store.connect() as db:
                     active = db.execute("SELECT 1 FROM update_jobs WHERE status IN ('queued','running')").fetchone()
@@ -896,8 +995,16 @@ def install(app, engine, sessions):
     @bp.get(BASE + '/bootstrap')
     def bootstrap():
         return jsonify(ok=True, user=g.current_user, csrf=csrf(request.cookies.get(COOKIE, '')),
-                       erp_submit_enabled=False, browser_enabled=False,
-                       message='采购 API 合同验收前，实际成交记录可保存，ERP 提交暂未开放')
+                       **engine.erp_submit_status())
+
+    @bp.post(BASE + '/erp-draft')
+    def erp_draft():
+        from .purchase_submission import PurchaseSubmissionBlocked
+        try:
+            result = engine.submit_erp_draft(g.current_user, request.get_json(silent=True))
+        except PurchaseSubmissionBlocked as error:
+            return jsonify(ok=False, error=error.code, message=str(error)), error.status
+        return jsonify(ok=True, **result)
 
     @bp.get(BASE + '/items')
     def items():
