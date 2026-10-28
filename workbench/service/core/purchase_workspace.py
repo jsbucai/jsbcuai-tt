@@ -231,14 +231,34 @@ def same_origin(app):
 
 
 class PurchaseWorkspace:
-    def __init__(self, store):
+    def __init__(self, store, submission=None):
         self.store = store
         self.stop_event = Event()
         with store.connect(write=True) as db:
             ensure(db)
             from .purchase_workspace_files import schema
             schema(db)
+        if submission is None:
+            from .purchase_submission import PurchaseSubmission
+            submission = PurchaseSubmission(store)
+        self.submission = submission
         self.rebuild()
+
+    def erp_submit_status(self):
+        """Draft ERP submit stays off unless both env flags and a verified adapter are present."""
+        enabled = self.submission._writing_allowed()
+        ready = bool(enabled and self.submission.ready())
+        if ready:
+            message = '采购订单草稿试写已开放。只创建未审核草稿，不付款、不审核；结果不明时只回查。'
+        elif enabled:
+            message = '采购 ERP 草稿开关已打开，但写入和回查合同尚未验收，不会向 ERP 发送。'
+        else:
+            message = '采购 API 合同验收前，实际成交记录可保存，ERP 提交暂未开放'
+        return {'erp_submit_enabled': enabled, 'erp_draft_ready': ready, 'browser_enabled': False, 'message': message}
+
+    def submit_erp_draft(self, user, body):
+        authorize(user)
+        return self.submission.submit(user, body)
 
     def rebuild(self, force=False):
         try:
@@ -896,8 +916,16 @@ def install(app, engine, sessions):
     @bp.get(BASE + '/bootstrap')
     def bootstrap():
         return jsonify(ok=True, user=g.current_user, csrf=csrf(request.cookies.get(COOKIE, '')),
-                       erp_submit_enabled=False, browser_enabled=False,
-                       message='采购 API 合同验收前，实际成交记录可保存，ERP 提交暂未开放')
+                       **engine.erp_submit_status())
+
+    @bp.post(BASE + '/erp-draft')
+    def erp_draft():
+        from .purchase_submission import PurchaseSubmissionBlocked
+        try:
+            result = engine.submit_erp_draft(g.current_user, request.get_json(silent=True))
+        except PurchaseSubmissionBlocked as error:
+            return jsonify(ok=False, error=error.code, message=str(error)), error.status
+        return jsonify(ok=True, **result)
 
     @bp.get(BASE + '/items')
     def items():
