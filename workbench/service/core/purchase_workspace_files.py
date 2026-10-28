@@ -134,8 +134,17 @@ def _export_document(engine,user,body,images):
             for a in allocations:
                 if kind=='purchase' and a['state']=='draft' and not a['details'].get('quote_id'):
                     raise ValueError(x['sku']+' 请先在供应商报价中采纳报价，再导出采购单')
+                from .purchase_notes import default_purchase_note
+                details=dict(a['details'])
+                # Quote notes stay internal. Arrival text is the customer/rework mark only.
+                display=text(details.get('arrival_note'))
+                if not display and a['state']!='draft':
+                    display=text(details.get('note'))
+                if not display:
+                    display=default_purchase_note(x, text(body.get('customer')), a['quantity'])
+                details['arrival_note']=display
                 lines.append({**{k:x[k] for k in ('id','product_id','sku','product_name','spec','model','material','kind','unit','has_image')},
-                    'allocation_id':a['id'],'quantity':a['quantity'],'details':a['details'],'version':x['version'],'state':a['state']})
+                    'allocation_id':a['id'],'quantity':a['quantity'],'details':details,'version':x['version'],'state':a['state']})
         if chosen is not None and {x['allocation_id'] for x in lines}!=set(chosen):
             raise PurchaseConflict('所选采购明细不属于本次商品或供应商范围')
         if len(lines)>100:raise ValueError('每份文件最多100行采购明细，请分批导出')
@@ -216,13 +225,13 @@ def render_pdf(path,snapshot,attachments):
     sub=ParagraphStyle('sub',parent=body,fontSize=12,leading=18,spaceAfter=12)
     p=lambda v:Paragraph(escape(text(v)),body)
     is_order=snapshot['kind']=='purchase';story=[Paragraph('UL随行  /  '+('采购单' if is_order else '采购询价单'),title),Paragraph(escape(snapshot['supplier_name']),sub),p('编制时间：'+snapshot['created_at']),Spacer(1,15)]
-    header=['序号','商品编码 / 名称','规格 / 型号','数量（支）']+(['单价 / 税价','金额（元）'] if is_order else ['报价 / 交期'])
+    header=['序号','商品编码 / 名称','规格 / 型号','数量（支）']+(['单价 / 税价','金额（元）'] if is_order else ['报价 / 交期','到货备注'])
     rows=[[p(x) for x in header]]
     for i,x in enumerate(snapshot['lines'],1):
         d=x['details'];r=[str(i),x['sku']+'\n'+x['product_name'],x['spec']+'\n'+x['model'],x['quantity']]
-        r+=([d.get('unit_price','')+'\n'+d.get('tax_basis',''),d.get('amount','')] if is_order else ['请填写'])
+        r+=([d.get('unit_price','')+'\n'+d.get('tax_basis',''),d.get('amount','')] if is_order else ['请填写', d.get('arrival_note') or ''])
         rows.append([Paragraph(escape(text(v)).replace('\n','<br/>'),body) for v in r])
-    widths=[36,154,116,60,82,55] if is_order else [36,180,130,65,92]
+    widths=[36,154,116,60,82,55] if is_order else [32,150,110,52,70,89]
     t=Table(rows,colWidths=widths,repeatRows=1,hAlign='LEFT');t.setStyle(TableStyle([('BACKGROUND',(0,0),(-1,0),HexColor('#f5e8e9')),('VALIGN',(0,0),(-1,-1),'TOP'),('BOTTOMPADDING',(0,0),(-1,-1),10),('TOPPADDING',(0,0),(-1,-1),10),('LINEBELOW',(0,0),(-1,-1),.4,HexColor('#e4e7ec'))]));story.append(t)
     story+=[Spacer(1,16),p('本文件按当前采购安排固定生成；客户信息及历史采购价格不对外展示。'+('实际价格以双方确认的税价、运费及折扣为准。' if is_order else '请回复单价、税价口径、包装支数及交期。'))]
     for item,data in attachments:

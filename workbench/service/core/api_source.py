@@ -46,6 +46,13 @@ class WmsSource:
             ignored_order_ids=self.ignored_order_ids).collect(
                 progress=progress, full_reconcile=full_reconcile)
 
+    def refresh_purchase_incremental(self):
+        """Purchase-page refresh: watermark window plus shortage SKUs. No ERP write."""
+        if self.store is None:
+            raise SourceIncomplete('采购增量刷新需要持久化数据库')
+        from .purchase_incremental import PurchaseIncrementalRefresh
+        return PurchaseIncrementalRefresh(self.client, self.store).run()
+
     def refresh_inventory_subset(self, product_ids=None, identities=None, progress=None):
         if self.inventory_subset is None:
             raise SourceIncomplete('库存子集刷新需要持久化数据库')

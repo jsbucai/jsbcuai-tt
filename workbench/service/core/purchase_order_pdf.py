@@ -38,8 +38,13 @@ def render_order(path, snapshot, attachments):
     rows = [[p(v,small) for v in columns]]
     for n,x in enumerate(snapshot['lines'],1):
         d=x['details']
-        note='交期 '+d['delivery_date'] if d.get('delivery_date') else ''
-        if x.get('kind')=='非标件': note += ('\n' if note else '')+'图纸见附件'
+        business=str(d.get('arrival_note') or '')
+        if business == '改制':
+            note='改制'
+        else:
+            note=business
+            if d.get('delivery_date'): note += ('\n' if note else '')+'交期 '+d['delivery_date']
+            if x.get('kind')=='非标件': note += ('\n' if note else '')+'图纸见附件'
         rows.append([p(v,small) for v in [n,x['sku'],x['product_name'],x['spec'],x.get('material',''),x['model'],x['quantity'],x['tax_unit_price'],x['tax_amount'],note]])
     widths=[24,48,110,60,32,58,34,49,53,71]
     widths[-1]+=width-sum(widths)

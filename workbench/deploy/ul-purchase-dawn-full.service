@@ -1,0 +1,10 @@
+[Unit]
+Description=Queue one full ERP reconcile at dawn. No-op unless UL_PURCHASE_DAWN_FULL=1
+After=docker.service network-online.target
+
+[Service]
+Type=oneshot
+WorkingDirectory=/opt/ul-workbench
+# Default off. Enable the timer only after the container has UL_PURCHASE_DAWN_FULL=1.
+# Without that variable, auto_enqueue.py purchase-dawn prints status=disabled and queues nothing.
+ExecStart=/usr/bin/docker compose exec -T workbench python auto_enqueue.py purchase-dawn
