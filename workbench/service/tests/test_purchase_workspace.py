@@ -44,7 +44,7 @@ def test_latest_valid_supplier_manual_return_and_refresh(store):
     p=inventory();history=[receipt(p,'S1','2026-10-01'),receipt(p,'S2','2026-10-02'),receipt(p,'S3','2026-10-03',redword=True)]
     seed(store,[p],history);e=PurchaseWorkspace(store)
     x=e.listing(ACTOR,{})['items'][0];assert x['allocations'][0]['supplier_name']=='S2'
-    b=body(e,'return');e.mutate(ACTOR,b);assert e.mutate(ACTOR,b)=={'changed':1,'action':'return'}
+    b=body(e,'return');first=e.mutate(ACTOR,b);again=e.mutate(ACTOR,b);assert first['changed']==1 and again==first and again['action']=='return'
     seed(store,[inventory(available='-30')],history,'2');refresh_index(store)
     x=e.listing(ACTOR,{})['items'][0];assert x['unassigned']=='30' and x['decision']=='manual_return'
     assert not x['allocations']
@@ -245,3 +245,173 @@ def test_customer_open_need_recent_supplier_and_price(store):
     other = engine.listing(ACTOR, {'customer': '客户乙'})
     assert [row['sku'] for row in other['items']] == ['A'] and other['items'][0]['customer_demand'] == '4'
     assert other['customer_board'][0]['name'] == '客户甲'
+
+
+def test_rework_card_note_auto_numbers_and_cache(store, monkeypatch):
+    from datetime import datetime
+    from zoneinfo import ZoneInfo
+    from core import purchase_orders
+    fixed = datetime(2026, 10, 28, 9, 0, tzinfo=ZoneInfo('Asia/Shanghai'))
+    monkeypatch.setattr(purchase_orders, 'shanghai_now', lambda: fixed)
+    bolt = inventory(available='-20')
+    nut = inventory('B', available='-8')
+    nut['product_name'] = 'GB/T 6170 螺母'
+    rework = inventory('C', available='-3')
+    rework['product_name'] = '非标销轴'
+    orders = [
+        _order(bolt, '海速有限公司', '120', 'SO1', '2026-10-20'),
+        _order(nut, '海速有限公司', '8', 'SO2', '2026-10-21'),
+        {**_order(rework, '海速有限公司', '3', 'SO3', '2026-10-22'), 'summary': '改制#交期=2026-10-22'},
+    ]
+    seed(store, [bolt, nut, rework], [receipt(bolt, 'S', '2026-10-01'), receipt(nut, 'S', '2026-10-01'), receipt(rework, 'S', '2026-10-01')], orders=orders)
+    engine = PurchaseWorkspace(store)
+    listed = engine.listing(ACTOR, {})
+    board = {row['name']: row for row in listed['customer_board']}
+    assert board['改制']['pending_items'] == 1 and board['改制']['kind'] == 'rework'
+    assert board['海速有限公司']['pending_items'] == 2 and board['海速有限公司']['pending_pieces'] == '128'
+    assert listed['customer_board'][0]['name'] == '改制'
+    assert [row['sku'] for row in engine.listing(ACTOR, {'customer': '改制'})['items']] == ['C']
+    assert engine.listing(ACTOR, {'customer': '改制'})['items'][0]['customer_demand'] == '3'
+    normal = {row['sku']: row for row in engine.listing(ACTOR, {'customer': '海速有限公司'})['items']}
+    assert set(normal) == {'A', 'B'} and normal['A']['customer_demand'] == '120'
+    for row in engine.listing(ACTOR, {})['items']:
+        engine.mutate(ACTOR, {**body(engine, 'review_ack', note='已核对这款需求'), 'items': [{'id': row['id'], 'version': row['version']}]})
+    sea = {row['sku']: row for row in engine.listing(ACTOR, {'customer': '海速有限公司'})['items']}['A']
+    payload = {**body(engine, 'record_purchase', allocation_id=sea['allocations'][0]['id'], quantity='20', amount='50', tax_basis='含税', customer='海速有限公司', platform_line_no='99'),
+               'items': [{'id': sea['id'], 'version': sea['version']}]}
+    saved = engine.mutate(ACTOR, payload)
+    assert saved['lines'][0]['platform_order_no'] == 'CG20261028001'
+    assert saved['lines'][0]['platform_line_no'] == '1' and saved['lines'][0]['note'] == '海速需求120'
+    assert engine.mutate(ACTOR, payload) == saved
+    after = {row['name']: row for row in saved['customer_board']}
+    assert after['海速有限公司']['pending_items'] == 1 and after['改制']['pending_items'] == 1
+    with store.connect() as db:
+        cache = json.loads(db.execute("SELECT value FROM purchase_workspace_meta WHERE key='customer_board_cache'").fetchone()[0])
+    assert cache['last_recomputed'] == ['海速有限公司']
+    nut_row = {row['sku']: row for row in engine.listing(ACTOR, {'customer': '海速有限公司'})['items']}['B']
+    second = engine.mutate(ACTOR, {**body(engine, 'record_purchase', allocation_id=nut_row['allocations'][0]['id'], quantity='8', amount='16', tax_basis='未税', customer='海速有限公司', platform_order_no='PO-9'),
+                                    'items': [{'id': nut_row['id'], 'version': nut_row['version']}]})
+    assert second['lines'][0]['platform_order_no'] == 'PO-9' and second['lines'][0]['platform_line_no'] == '1'
+    assert second['lines'][0]['note'] == '海速需求8'
+    piece = engine.listing(ACTOR, {'customer': '改制'})['items'][0]
+    rework_saved = engine.mutate(ACTOR, {**body(engine, 'record_purchase', allocation_id=piece['allocations'][0]['id'], quantity='3', amount='9', tax_basis='含税', customer='改制'),
+                                         'items': [{'id': piece['id'], 'version': piece['version']}]})
+    assert rework_saved['lines'][0]['note'] == '改制' and '3' not in rework_saved['lines'][0]['note']
+    assert rework_saved['lines'][0]['platform_order_no'] == 'CG20261028002'
+    assert rework_saved['lines'][0]['platform_line_no'] == '1'
+
+
+def test_incremental_updates_only_touched_stock(store):
+    from datetime import datetime
+    from zoneinfo import ZoneInfo
+    from core.purchase_incremental import PurchaseIncrementalRefresh
+    from core.purchase_workspace_data import WAREHOUSE
+    kept = inventory('KEEP', available='4', physical='4')
+    kept['product_id'], kept['sku_id'] = '200', '201'
+    short = inventory('SHORT', available='-2', physical='1')
+    short['product_id'], short['sku_id'] = '300', '301'
+    seed(store, [kept, short])
+    engine = PurchaseWorkspace(store)
+    with store.connect(write=True) as db:
+        db.execute("INSERT OR REPLACE INTO purchase_workspace_meta VALUES ('erp_refresh_watermark', ?)",
+                   ('2026-10-27T12:00:00+08:00',))
+        before = db.execute("SELECT value FROM settings WHERE key='data_version'").fetchone()[0]
+
+    class Client:
+        def __init__(self):
+            self.calls = []
+        def account(self):
+            return 'P'
+        def call(self, method, params):
+            self.calls.append((method, params))
+            page = params.get('pageindex') or params.get('pageno') or 1
+            if page > 1:
+                return {'details': [], 'goodsstocks': []}
+            if method == 'erp.bill.billcenterlist':
+                return {'details': [{
+                    'vchcode': 'B1', 'number': 'JH1', 'vchtypename': '进货入库单', 'date': '2026-10-28',
+                    'overtime': '2026-10-28T10:00:00+08:00', 'btypeid': 'S', 'bfullname': '华东',
+                    'redold': False, 'redword': False,
+                    'details': [{'dlyorder': 'L1', 'ktypeid': WAREHOUSE, 'ptypeid': '300', 'skuid': '301',
+                                 'usercode': 'SHORT', 'pfullname': '螺栓', 'qty': '6', 'total': '12'}],
+                }]}
+            if method == 'erp.goodsstocks.list':
+                assert 300 in params['ptypeids']
+                return {'goodsstocks': [
+                    {'ptypeid': '300', 'skuid': '301', 'ktypeid': WAREHOUSE, 'qty': '8', 'saleqty': '1'},
+                ]}
+            raise AssertionError(method)
+
+    client = Client()
+    result = PurchaseIncrementalRefresh(client, store).run(datetime(2026, 10, 28, 12, 0, tzinfo=ZoneInfo('Asia/Shanghai')))
+    assert result['applied'] is True and result['stock_rows'] == 1
+    assert {method for method, _ in client.calls} == {'erp.bill.billcenterlist', 'erp.goodsstocks.list'}
+    assert client.calls[0][1]['overbegin'] == '2026-10-24 12:00:00'
+    with store.connect() as db:
+        rows = {json.loads(row['payload'])['sku']: json.loads(row['payload'])
+                for row in db.execute("SELECT payload FROM records WHERE kind='inventory'")}
+        assert rows['SHORT']['available_stock'] == '1' and rows['KEEP']['available_stock'] == '4'
+        assert db.execute("SELECT value FROM settings WHERE key='data_version'").fetchone()[0] == before
+    engine.rebuild(force=True)
+    assert engine.listing(ACTOR, {})['total'] == 0
+
+
+def test_dawn_full_reconcile_is_off_until_enabled(store):
+    from datetime import datetime
+    from zoneinfo import ZoneInfo
+    from core.update_jobs import UpdateJobs
+    jobs = UpdateJobs(store, object())
+    assert jobs.enqueue_purchase_dawn(enabled=False) is None
+    now = datetime(2026, 10, 28, 4, 0, tzinfo=ZoneInfo('Asia/Shanghai'))
+    job = jobs.enqueue_purchase_dawn(enabled=True, now=now)
+    assert job['mode'] == 'reconcile' and job['result']['schedule'] == 'purchase-dawn'
+    assert jobs.enqueue_purchase_dawn(enabled=True, now=now)['id'] == job['id']
+
+
+def _sale_fact(order_no, line_id, quantity, amount):
+    return ('1', 'P', order_no, line_id, 'identity', 'A', quantity, amount, '支', 'tax_inclusive',
+            'wms_total_25matched_sales_rows_v1', '1', 'DOC'+order_no, 'LINE'+line_id, 'a'*64,
+            '2026-10-21T13:15:00+08:00', 'user_confirmed_base_unit_1_zhi_2026_10_07')
+
+
+def test_customer_lines_show_sales_order_price_without_changing_shortage(store):
+    from core.purchase_price_bounds import ensure_fact_schema
+    bolt = inventory(available='-20')
+    plain = inventory('B', available='-6')
+    plain['product_name'] = 'GB/T 6170 螺母'
+    rework = inventory('C', available='-3')
+    rework['product_name'] = '非标销轴'
+    second = {**_order(bolt, '客户甲', '4', 'SO2', '2026-10-18'), 'line_id': '2', 'order_date': '2026-10-18'}
+    orders = [
+        {**_order(bolt, '客户甲', '8', 'SO1', '2026-10-20'), 'order_date': '2026-10-20'},
+        second,
+        _order(plain, '客户甲', '6', 'SO3', '2026-10-21'),
+        {**_order(rework, '客户甲', '3', 'SO4', '2026-10-22'), 'summary': '改制#交期=2026-10-22', 'line_id': '9'},
+    ]
+    seed(store, [bolt, plain, rework], [receipt(bolt, 'S', '2026-10-01')], orders=orders)
+    with store.connect(write=True) as db:
+        ensure_fact_schema(db)
+        db.executemany('INSERT INTO wms_sale_price_facts VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)', [
+            _sale_fact('SO1', '1', '8', '16'),
+            _sale_fact('SO2', '2', '4', '12'),
+            _sale_fact('SO4', '9', '3', '9'),
+        ])
+    engine = PurchaseWorkspace(store)
+    listed = engine.listing(ACTOR, {'customer': '客户甲'})
+    rows = {row['sku']: row for row in listed['items']}
+    assert rows['A']['shortage'] == '20' and rows['B']['shortage'] == '6'
+    prices = rows['A']['sale_prices']
+    assert prices['status'] == 'ok' and prices['min'] == '2' and prices['max'] == '3'
+    assert prices['tax_basis'] == '含税' and prices['unit'] == '支'
+    assert prices['latest_order_no'] == 'SO1'
+    assert {line['order_no'] for line in prices['lines']} == {'SO1', 'SO2'}
+    assert rows['B']['sale_prices']['status'] == 'missing'
+    assert 'C' not in rows
+    rework_row = engine.listing(ACTOR, {'customer': '改制'})['items'][0]
+    assert rework_row['sku'] == 'C' and rework_row['sale_prices']['latest'] == '3'
+    assert rework_row['sale_prices']['lines'][0]['order_no'] == 'SO4'
+    detail = engine.detail(ACTOR, rows['A']['id'])
+    by_order = {line['order_no']: line for line in detail['demands']}
+    assert by_order['SO1']['sale_unit_price'] == '2' and by_order['SO1']['sale_tax_basis'] == '含税'
+    assert by_order['SO1']['sale_unit'] == '支' and by_order['SO2']['sale_unit_price'] == '3'
+    assert detail['shortage'] == '20'

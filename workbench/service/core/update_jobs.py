@@ -186,6 +186,41 @@ class UpdateJobs:
         self.wake.set()
         return self.get(identity)
 
+    def enqueue_purchase_dawn(self, enabled=None, now=None):
+        """One full reconcile at 03:10 Asia/Shanghai. Disabled unless explicitly enabled."""
+        import os
+        if enabled is None:
+            enabled = os.environ.get('UL_PURCHASE_DAWN_FULL') == '1'
+        if not enabled:
+            return None
+        scheduled = self.dawn_full_slot(now).isoformat()
+        identity = str(uuid.uuid5(uuid.NAMESPACE_URL, 'ul-workbench:purchase-dawn:' + scheduled))
+        with self.store.connect(write=True) as db:
+            row = db.execute('SELECT * FROM update_jobs WHERE id=?', (identity,)).fetchone()
+            if row:
+                if row['mode'] != 'reconcile':
+                    raise JobConflict('凌晨全量时段已用于不同模式')
+                return self._hydrate(row)
+            stamp = timestamp()
+            db.execute('INSERT INTO update_jobs VALUES (?,?,?,?,?,?,?)',
+                       (identity, 'reconcile', 'queued', 'queued', dumps({
+                           'automatic': True, 'schedule': 'purchase-dawn', 'scheduled_for': scheduled,
+                           'full_reconcile': True}), stamp, stamp))
+        self.wake.set()
+        return self.get(identity)
+
+    @staticmethod
+    def dawn_full_slot(now=None):
+        zone = ZoneInfo('Asia/Shanghai')
+        now = now or datetime.now(zone)
+        if now.tzinfo is None:
+            raise ValueError('自动更新时刻必须包含时区')
+        now = now.astimezone(zone)
+        slot = now.replace(hour=3, minute=10, second=0, microsecond=0)
+        if slot > now:
+            slot -= timedelta(days=1)
+        return slot
+
     def enqueue_workday(self, now=None):
         """One active daytime refresh; retain every trigger without a backlog.
 

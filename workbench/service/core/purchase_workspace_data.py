@@ -144,18 +144,62 @@ def ensure(db):
         db.execute(sql)
 
 
-def refresh_index(store):
+def load_sale_facts(db):
+    """Verified sale prices published with the current order snapshot. No ERP call."""
+    if not db.execute("SELECT 1 FROM sqlite_master WHERE name='wms_sale_price_facts'").fetchone():
+        return {}
+    version = text(setting(db, 'data_version', ''))
+    sql = '''SELECT order_no, line_id, quantity, inclusive_amount, unit, tax_basis
+             FROM wms_sale_price_facts'''
+    params = ()
+    if version:
+        sql += ' WHERE data_version=?'
+        params = (version,)
+    facts = {}
+    for row in db.execute(sql, params):
+        facts[(text(row['order_no']), text(row['line_id']))] = dict(row)
+    return facts
+
+
+def sale_reference(order, fact):
+    """Unit price for one unfulfilled sales line. Missing fact means no sale price."""
+    if fact:
+        quantity = decimal(fact.get('quantity') or 0)
+        amount = decimal(fact.get('inclusive_amount') or 0)
+        if quantity > 0 and amount >= 0:
+            basis = text(fact.get('tax_basis'))
+            return {
+                'sale_unit_price': number(amount / quantity),
+                'sale_amount': number(amount),
+                'sale_tax_basis': '含税' if basis == 'tax_inclusive' else '未税' if basis == 'tax_exclusive' else '税价待核对',
+                'sale_unit': text(fact.get('unit')) or '支',
+                'sale_price_source': 'wms_inclusive_amount',
+            }
+    explicit = text(order.get('sale_unit_price'))
+    if explicit:
+        return {
+            'sale_unit_price': number(explicit),
+            'sale_amount': text(order.get('sale_amount')),
+            'sale_tax_basis': text(order.get('sale_tax_basis')) or '税价待核对',
+            'sale_unit': text(order.get('sale_unit')) or text(order.get('unit_name')) or '支',
+            'sale_price_source': 'order_snapshot',
+        }
+    return {}
+
+
+def refresh_index(store, force=False):
     """Build outside the write lock, then atomically swap this published version."""
     with store.read_snapshot(), store.connect() as db:
         token = source_token(db)
         saved = db.execute("SELECT value FROM purchase_workspace_meta WHERE key='source_token'").fetchone()
-        if saved and saved[0] == token:
+        if saved and saved[0] == token and not force:
             return {'changed': False}
         rows = {kind: [json.loads(r[0]) for r in db.execute('SELECT payload FROM records WHERE kind=?', (kind,))]
                 for kind in ('inventory', 'orders', 'purchases')}
         table = db.execute("SELECT 1 FROM sqlite_master WHERE name='sales_erp_customers'").fetchone()
         directory = [dict(r) for r in db.execute('SELECT * FROM sales_erp_customers')] if table else []
         coverage = setting(db, 'data_query_scope', {})
+        sale_facts = load_sale_facts(db)
     now = timestamp()
     suppliers = {}
     for r in directory:
@@ -195,8 +239,13 @@ def refresh_index(store):
         ident = item_id(r)
         qty = decimal(r.get('quantity', 0))
         if _in_unfulfilled_scope(r):
-            demands[ident].append({k: r.get(k, '') for k in
-                ('order_no', 'line_id', 'customer_name', 'customer_source', 'quantity', 'delivery_date', 'order_date')})
+            demand = {k: r.get(k, '') for k in
+                ('order_no', 'line_id', 'customer_name', 'customer_source', 'quantity', 'delivery_date', 'order_date')}
+            blob = ''.join(text(r.get(k)) for k in ('summary', 'note', 'system_note', 'product_name', 'spec'))
+            demand['summary'] = text(r.get('summary'))[:200]
+            demand['rework'] = '1' if '改制' in blob else ''
+            demand.update(sale_reference(r, sale_facts.get((text(demand.get('order_no')), text(demand.get('line_id'))))))
+            demands[ident].append(demand)
         elif r.get('shadow_demand'):
             shadow[ident] += qty
     prepared = []
@@ -272,5 +321,9 @@ def refresh_index(store):
                     payload['suggested_supplier'], row[4], 'draft', 'system', dumps({'basis': payload['suggestion']}), now, now))
         for k, v in [('source_token', token), ('indexed_at', now), ('history_coverage', dumps(coverage))]:
             db.execute('INSERT OR REPLACE INTO purchase_workspace_meta VALUES (?,?)', (k, v))
+        previous = db.execute("SELECT value FROM purchase_workspace_meta WHERE key='purchase_index_generation'").fetchone()
+        generation = str((int(previous[0]) if previous and str(previous[0]).isdigit() else 0) + 1)
+        db.execute("INSERT OR REPLACE INTO purchase_workspace_meta VALUES ('purchase_index_generation', ?)", (generation,))
+        db.execute("DELETE FROM purchase_workspace_meta WHERE key='customer_board_cache'")
         db.execute("DELETE FROM purchase_workspace_meta WHERE key='index_error'")
     return {'changed': True, 'items': len(prepared), 'shortage_items': sum(r[7] for r in prepared)}
