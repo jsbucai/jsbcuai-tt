@@ -209,3 +209,39 @@ def test_formal_pdf_exports_only_explicit_allocations(store):
     result=export_document(e,ACTOR,b,SimpleNamespace())
     with store.connect() as db:s=json.loads(db.execute('SELECT snapshot FROM purchase_workspace_documents WHERE id=?',(result['id'],)).fetchone()[0])
     assert len(s['lines'])==1 and s['lines'][0]['quantity']=='10' and s['tax_total']=='20.00'
+
+
+def _order(product, customer, qty, order_no, due):
+    return {**product, 'order_no': order_no, 'line_id': '1', 'customer_name': customer,
+            'quantity': qty, 'delivery_date': due, 'order_date': '2026-10-01'}
+
+
+def test_customer_open_need_recent_supplier_and_price(store):
+    bolt = inventory(available='-20')
+    nut = inventory('B', available='-5', physical='1')
+    nut['product_name'] = 'GB/T 6170 螺母'
+    covered = inventory('C', available='4', physical='4')
+    orders = [
+        _order(bolt, '客户甲', '8', 'SO1', '2026-10-20'),
+        _order(bolt, '客户乙', '4', 'SO2', '2026-10-18'),
+        _order(nut, '客户甲', '5', 'SO3', '2026-11-01'),
+        _order(covered, '客户甲', '1', 'SO4', '2026-10-20'),
+    ]
+    seed(store, [bolt, nut, covered], [receipt(bolt, '华东紧固件', '2026-10-01')], orders=orders)
+    engine = PurchaseWorkspace(store)
+    listed = engine.listing(ACTOR, {'customer': '客户甲', 'sort': 'shortage', 'page_size': 50})
+    board = {row['name']: row for row in listed['customer_board']}
+    assert board['客户甲']['items'] == 2 and board['客户甲']['demand'] == '13'
+    assert board['客户乙']['items'] == 1 and board['客户乙']['demand'] == '4'
+    assert board['客户甲']['unassigned_items'] == 1
+    assert [row['sku'] for row in listed['items']] == ['A', 'B']
+    first = listed['items'][0]
+    assert first['customer_demand'] == '8' and first['customer_orders'] == ['SO1']
+    assert first['customer_due'] == '2026-10-20' and first['customer_line_count'] == 1
+    assert first['suggestion']['supplier_name'] == '华东紧固件' and first['suggestion']['unit_price'] == '2.5'
+    assert first['history_preview'][0]['supplier_name'] == '华东紧固件'
+    assert first['history_preview'][0]['quantity'] == '10' and first['history_preview'][0]['unit_price'] == '2.5'
+    assert 'demands' not in first and 'customers' not in first
+    other = engine.listing(ACTOR, {'customer': '客户乙'})
+    assert [row['sku'] for row in other['items']] == ['A'] and other['items'][0]['customer_demand'] == '4'
+    assert other['customer_board'][0]['name'] == '客户甲'

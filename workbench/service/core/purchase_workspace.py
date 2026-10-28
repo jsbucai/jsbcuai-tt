@@ -6,6 +6,7 @@ from pathlib import Path
 from threading import Event, Thread
 import hmac
 import json
+import re
 import uuid
 import logging
 
@@ -23,6 +24,63 @@ class PurchaseConflict(ValueError):
     def __init__(self, message, code='purchase_conflict', status=409):
         super().__init__(message)
         self.code, self.status = code, status
+
+
+def customer_board(items):
+    """Customers who still have open demand on a product ERP still shows short."""
+    board = {}
+    for item in items:
+        if decimal(item['shortage']) <= 0:
+            continue
+        seen = set()
+        for line in item.get('demands') or []:
+            name = text(line.get('customer_name'))
+            if not name:
+                continue
+            slot = board.setdefault(name, {'name': name, 'items': 0, 'demand': Decimal(0), 'unassigned_items': 0})
+            slot['demand'] += decimal(line.get('quantity') or 0)
+            if name in seen:
+                continue
+            seen.add(name)
+            slot['items'] += 1
+            if decimal(item['unassigned']) > 0:
+                slot['unassigned_items'] += 1
+    rows = [{**slot, 'demand': number(slot['demand'])} for slot in board.values()]
+    rows.sort(key=lambda row: (-row['items'], natural(row['name'])))
+    return rows
+
+
+def customer_need(item, customer):
+    lines = [line for line in item.get('demands') or [] if text(line.get('customer_name')) == customer]
+    dues = sorted(text(line.get('delivery_date')) for line in lines
+                  if re.fullmatch(r'\d{4}-\d{2}-\d{2}', text(line.get('delivery_date'))))
+    orders = []
+    for line in lines:
+        order_no = text(line.get('order_no'))
+        if order_no and order_no not in orders:
+            orders.append(order_no)
+    quantity = sum((decimal(line.get('quantity') or 0) for line in lines), Decimal(0))
+    return {'customer_demand': number(quantity), 'customer_due': dues[0] if dues else '',
+            'customer_orders': orders[:8], 'customer_line_count': len(lines)}
+
+
+def history_preview(db, idents):
+    preview = defaultdict(list)
+    if not idents:
+        return preview
+    marks = ','.join('?' * len(idents))
+    for row in db.execute(
+            f'''SELECT item_id, occurred_at, payload FROM purchase_workspace_history
+                WHERE item_id IN ({marks}) ORDER BY occurred_at DESC, id''', idents):
+        bucket = preview[row['item_id']]
+        if len(bucket) >= 3:
+            continue
+        payload = json.loads(row['payload'])
+        bucket.append({'supplier_name': text(payload.get('supplier_name')),
+                       'occurred_at': text(row['occurred_at'] or payload.get('posted_at') or payload.get('document_date')),
+                       'quantity': text(payload.get('quantity')), 'unit_price': text(payload.get('unit_price')),
+                       'tax_basis': text(payload.get('tax_basis'))})
+    return preview
 
 
 def authorize(user):
@@ -155,10 +213,18 @@ class PurchaseWorkspace:
             else:
                 matched.sort(key=lambda x: (natural(x['category']), natural(x['standard']), natural(x['model']), natural(x['spec']), natural(x['sku'])))
             total = len(matched)
+            customer = text(args.get('customer'))
+            page_items = matched[(page-1)*size:page*size]
+            preview = history_preview(db, [x['id'] for x in page_items])
             output = []
-            for x in matched[(page-1)*size:page*size]:
-                output.append({k: v for k, v in x.items() if k not in {'demands', 'customers'}})
+            for x in page_items:
+                slim = {k: v for k, v in x.items() if k not in {'demands', 'customers'}}
+                slim['history_preview'] = preview.get(x['id'], [])
+                if customer:
+                    slim.update(customer_need(x, customer))
+                output.append(slim)
             return {'items': output, 'total': total, 'page': page, 'page_size': size,
+                'customer_board': customer_board(items),
                 'source_token': token, 'source_current': current, 'source_updated_at': setting(db, 'data_source_updated_at'),
                 'counts': counts, 'facets': facets, 'suppliers': [{**s, **{
                     **summaries[s['id']], 'quantity': number(summaries[s['id']]['quantity'])}} for s in self.suppliers(db)],
