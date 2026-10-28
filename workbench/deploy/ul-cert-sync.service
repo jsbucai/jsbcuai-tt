@@ -1,0 +1,8 @@
+[Unit]
+Description=Validate and sync UL TLS certificate from router
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+ExecStart=/usr/local/sbin/sync-ul-cert

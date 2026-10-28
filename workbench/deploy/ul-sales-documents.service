@@ -1,0 +1,21 @@
+[Unit]
+Description=UL sales attachment extraction, one bounded job
+After=network.target
+
+[Service]
+Type=oneshot
+User=ulcollector
+Group=ulcollector
+WorkingDirectory=/opt/ul-workbench/service
+Environment=PYTHONPATH=/opt/ul-workbench/service
+Environment=PYTHONDONTWRITEBYTECODE=1
+Environment=TZ=Asia/Shanghai
+# Share the browser lane so OCR and Chromium do not compete on the small VM.
+# A busy lane means skip this poll, not a failed or completed document job.
+ExecStart=/usr/bin/flock --conflict-exit-code=0 -n /opt/ul-workbench/service/runtime/data/.web-browser-lane.lock /opt/ul-sales-runner/deps/ocr-20261007/document-venv/bin/python /opt/ul-workbench/service/tools/sales_document_worker.py --runtime /opt/ul-workbench/service/runtime/data --tesseract-command /opt/ul-sales-runner/deps/ocr-20261007/tesseract-isolated
+UMask=0077
+NoNewPrivileges=true
+MemoryMax=512M
+CPUQuota=100%
+TimeoutStartSec=60s
+KillMode=control-group

@@ -1,0 +1,19 @@
+[Unit]
+Description=UL finite lightweight resource observation 2026-10-12 to 2026-10-15
+After=network-online.target
+
+[Service]
+Type=oneshot
+ExecStart=/usr/bin/python3 /opt/ul-workbench/service/tools/observe_backend.py
+Nice=15
+CPUQuota=20%
+MemoryMax=96M
+TimeoutStartSec=25
+UMask=0077
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=strict
+# SQLite read-only WAL connections may need transient shared-memory sidecars.
+# The sampler opens the database with mode=ro and writes only its metric files.
+ReadWritePaths=/opt/ul-workbench/service/runtime/data
+

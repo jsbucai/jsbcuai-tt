@@ -1,0 +1,12 @@
+[Unit]
+Description=Poll the durable owner Codex sales draft queue
+
+[Timer]
+OnBootSec=40s
+OnUnitActiveSec=10s
+AccuracySec=1s
+Unit=ul-sales-codex.service
+
+[Install]
+WantedBy=timers.target
+

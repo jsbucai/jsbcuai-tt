@@ -1,0 +1,4 @@
+#!/bin/sh
+set -eu
+export LD_LIBRARY_PATH=/opt/ul-sales-runner/deps/pdf-20261007/root/usr/lib/x86_64-linux-gnu
+exec /opt/ul-sales-runner/deps/pdf-20261007/root/usr/bin/pdftoppm "$@"

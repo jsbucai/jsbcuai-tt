@@ -1,0 +1,15 @@
+**/runtime
+**/tests
+**/__pycache__
+**/.pytest_cache
+**/build
+**/.gradle
+**/*.keystore
+**/*.jks
+**/*.apk
+.git
+secrets
+.env
+tools
+app
+docs

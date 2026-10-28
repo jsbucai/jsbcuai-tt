@@ -1,0 +1,25 @@
+{
+  "schema_version": 1,
+  "source": "NAS Fastener_AI_N150_20261006-001631/03_规则库",
+  "copied_at": "2026-10-07",
+  "files": {
+    "允许替代关系.json": "c3c7b916d8fe88a826eefb258cbc1bc5ac9c270ec18493bfc8e37c98dbb4e046",
+    "商品名称同义词.json": "0e92ed16fbe706fab6424291f9cc800b6b476a3c76f2bb0b29fad7dc8b978b32",
+    "商品解析规则.json": "7a5333d980d77216df7d83037aac854daedd6b3359a4607b8ddae6c243420901",
+    "客户料号规则.json": "ac6e3cf48397a6892efcc355816506daca0eb365ff442331bd40508911589bcf",
+    "标准关系规则.json": "c0868cd655e6ec6e63e21e6bd873213fe056d30d34542e7922b5bf4027172c3b",
+    "表面处理同义词.json": "17ca9472d341dad4cf54d90148e3ee4afbe19fe1f16a4e3fb632497160fe9da5"
+  },
+  "local_amendments": [
+    {
+      "date": "2026-10-21",
+      "file": "标准关系规则.json",
+      "scope": "用户确认的70.1标准号写法，不扩展DIN/ISO等效关系"
+    },
+    {
+      "date": "2026-10-21",
+      "file": "商品名称同义词.json",
+      "scope": "小圆螺母精确产品族，避免命中泛称螺母"
+    }
+  ]
+}

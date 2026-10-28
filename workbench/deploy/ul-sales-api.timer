@@ -1,0 +1,12 @@
+[Unit]
+Description=UL confirmed sales API queue
+
+[Timer]
+OnBootSec=45s
+OnUnitInactiveSec=10s
+AccuracySec=1s
+Unit=ul-sales-api.service
+
+[Install]
+WantedBy=timers.target
+

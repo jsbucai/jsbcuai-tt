@@ -1,0 +1,10 @@
+[Unit]
+Description=UL five-minute sampling for three full working days
+
+[Timer]
+OnCalendar=2026-10-12..15 *:00/5:00 Asia/Shanghai
+Persistent=false
+AccuracySec=10s
+
+[Install]
+WantedBy=timers.target

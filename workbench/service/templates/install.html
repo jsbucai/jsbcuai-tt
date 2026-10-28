@@ -1,0 +1,66 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="theme-color" content="#f5f5f6">
+  <title>安装 UL 随行</title>
+  <style>
+    * { box-sizing: border-box; }
+    body { margin: 0; background: #f5f5f6; color: #1c1d20; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", "Microsoft YaHei", sans-serif; line-height: 1.6; }
+    main { max-width: 680px; margin: auto; padding: 44px 24px 60px; }
+    .brand { display: flex; align-items: center; gap: 12px; font-size: 14px; font-weight: 650; }
+    .mark { display: grid; place-items: center; width: 42px; height: 42px; background: #d71920; color: white; border-radius: 12px; font-size: 18px; font-weight: 800; }
+    .eyebrow { margin: 46px 0 12px; color: #d71920; font-size: 12px; letter-spacing: .14em; font-weight: 700; }
+    h1 { margin: 0 0 16px; font-size: clamp(32px, 7vw, 46px); letter-spacing: -.04em; line-height: 1.2; }
+    .intro { max-width: 450px; margin: 0 0 28px; color: #61646b; font-size: 16px; }
+    .card { background: white; border: 1px solid #e4e5e7; border-radius: 20px; padding: 24px; }
+    .card-header { display: flex; align-items: baseline; justify-content: space-between; gap: 12px; flex-wrap: wrap; }
+    h2 { margin: 0; font-size: 20px; }
+    .version { font-size: 12px; background: #eeeff1; border-radius: 6px; padding: 3px 8px; color: #61646b; }
+    .state { margin: 12px 0 20px; color: #61646b; font-size: 14px; }
+    .button, .disabled { display: block; width: 100%; text-align: center; border-radius: 11px; padding: 14px 18px; font-size: 16px; font-weight: 650; text-decoration: none; }
+    .button { background: #d71920; color: #fff; }
+    .button:hover { background: #b9141a; }
+    a:focus-visible { outline: 3px solid #191919; outline-offset: 4px; }
+    .disabled { background: #eeeff1; color: #61646b; }
+    details { margin-top: 18px; color: #61646b; font-size: 12px; }
+    summary { cursor: pointer; padding: 4px 0; }
+    code { display: block; overflow-wrap: anywhere; margin-top: 10px; color: #34363c; }
+    .steps { padding: 24px 0 0; }
+    .steps h2 { font-size: 15px; }
+    ol { padding-left: 22px; margin: 12px 0; color: #61646b; font-size: 14px; }
+    li { margin: 8px 0; padding-left: 4px; }
+    footer { border-top: 1px solid #e4e5e7; margin-top: 28px; padding-top: 18px; color: #61646b; font-size: 12px; }
+    @media (max-width: 400px) { main { padding: 28px 18px 36px; } .card { padding: 20px; } .eyebrow { margin-top: 36px; } }
+  </style>
+</head>
+<body>
+  <main>
+    <div class="brand"><span class="mark" aria-hidden="true">UL</span><span>工作台 · 安卓版</span></div>
+    <p class="eyebrow">为日常包装而生</p>
+    <h1>扫码、查单，<br>随手完成。</h1>
+    <p class="intro">安装独立原生 App，在手机上查询订单与库存，连接便携打印机。</p>
+    <section class="card" aria-label="安卓安装包">
+      <div class="card-header"><h2>UL 随行</h2><span class="version">{% if release %}{{ release.version }} · {% endif %}开发版</span></div>
+      {% if release %}
+        <p class="state">Android 8.0 及以上 · {{ release.size }} · 已就绪</p>
+        <a class="button" href="/app/download" download="{{ release.filename }}">下载并安装 APK</a>
+        <details><summary>文件校验 · SHA-256</summary><code>{{ release.sha256 }}</code></details>
+      {% else %}
+        <p class="state" role="status">安装包正在构建。完成后刷新本页即可下载。</p>
+        <span class="disabled" aria-disabled="true">正在构建</span>
+      {% endif %}
+    </section>
+    <section class="steps" aria-label="安装步骤">
+      <h2>手机安装，三步开始</h2>
+      <ol>
+        <li>使用手机浏览器打开当前安装页。</li>
+        <li>用手机浏览器下载 APK，打开后按系统提示安装。</li>
+        <li>打开 UL 随行并登录；打印时在“设备”连接 A300E。</li>
+      </ol>
+    </section>
+    <footer>这是 UL 随行原生 App 的安装页。业务数据需登录后才能访问。</footer>
+  </main>
+</body>
+</html>

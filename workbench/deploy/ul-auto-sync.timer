@@ -1,0 +1,11 @@
+[Unit]
+Description=UL 07:30 preload and 15-minute daytime updates (08:00-19:00 Shanghai)
+
+[Timer]
+OnCalendar=*-*-* 07:30:00 Asia/Shanghai
+OnCalendar=*-*-* 08..18:00/15:00 Asia/Shanghai
+Persistent=false
+AccuracySec=30s
+
+[Install]
+WantedBy=timers.target

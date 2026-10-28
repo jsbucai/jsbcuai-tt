@@ -1,0 +1,162 @@
+{
+  "version": "V1",
+  "updated_by": "Codex",
+  "purpose": "记录标准号写法归一和谨慎的候选召回规则。除明确标注外，不认定不同标准完全等效。",
+  "normalization_rules": [
+    {
+      "canonical": "GB/T70.1",
+      "aliases": [
+        "GB/T70.1",
+        "GBT70.1",
+        "GB70.1"
+      ],
+      "type": "same_standard_number",
+      "evidence": "2026-10-21 用户明确确认 GB/T70.1 与 GB70.1 是同一标准写法。"
+    },
+    {
+      "canonical": "GB/T93",
+      "aliases": [
+        "GB/T93",
+        "GBT93",
+        "GB93"
+      ],
+      "type": "same_standard_number"
+    },
+    {
+      "canonical": "GB/T97.1",
+      "aliases": [
+        "GB/T97.1",
+        "GBT97.1",
+        "GB97.1",
+        "GB971",
+        "GBT971"
+      ],
+      "type": "same_standard_number"
+    },
+    {
+      "canonical": "GB/T5783",
+      "aliases": [
+        "GB/T5783",
+        "GBT5783",
+        "GB5783"
+      ],
+      "type": "same_standard_number"
+    },
+    {
+      "canonical": "GB/T6170",
+      "aliases": [
+        "GB/T6170",
+        "GBT6170",
+        "GB6170"
+      ],
+      "type": "same_standard_number"
+    },
+    {
+      "canonical": "DIN127B",
+      "aliases": [
+        "DIN127B",
+        "DIN127(B)",
+        "DIN127"
+      ],
+      "type": "same_standard_number_with_variant_risk"
+    },
+    {
+      "canonical": "DIN125",
+      "aliases": [
+        "DIN125"
+      ],
+      "type": "same_standard_number"
+    },
+    {
+      "canonical": "DIN933",
+      "aliases": [
+        "DIN933"
+      ],
+      "type": "same_standard_number"
+    },
+    {
+      "canonical": "DIN934",
+      "aliases": [
+        "DIN934"
+      ],
+      "type": "same_standard_number"
+    },
+    {
+      "canonical": "ISO7089",
+      "aliases": [
+        "ISO7089"
+      ],
+      "type": "same_standard_number"
+    },
+    {
+      "canonical": "ISO4032",
+      "aliases": [
+        "ISO4032",
+        "IS04032"
+      ],
+      "type": "same_standard_number"
+    }
+  ],
+  "explicit_equivalences": [
+    {
+      "standards": [
+        "GB/T5781",
+        "GB/T5783"
+      ],
+      "relation": "erp_match_equivalent",
+      "scope": "六角头螺栓",
+      "status": "启用",
+      "evidence": "2026-09-23 业务确认：GB 5781 在当前 ERP 商品匹配中等同 GB 5783。",
+      "remark_policy": "订单备注仍保留客户原始标准 GB/T 5781。"
+    }
+  ],
+  "known_groupings_for_candidate_recall": [
+    {
+      "group": "弹簧垫圈常见标准组合",
+      "standards": [
+        "GB/T93",
+        "DIN127B",
+        "UNI1751"
+      ],
+      "relation": "candidate_recall_only",
+      "note": "ERP商品名称中常把这些标准写在同一商品族内；匹配时可用于召回，但不得自动认定完全等效。"
+    },
+    {
+      "group": "平垫圈常见标准组合",
+      "standards": [
+        "GB/T97.1",
+        "DIN125",
+        "ISO7089",
+        "UNI6592"
+      ],
+      "relation": "candidate_recall_only",
+      "note": "可召回同族候选；自动确认仍需规格、等级、表面处理一致。"
+    },
+    {
+      "group": "六角头螺栓常见标准组合",
+      "standards": [
+        "GB/T5783",
+        "DIN933",
+        "ISO4017"
+      ],
+      "relation": "candidate_recall_only",
+      "note": "ERP中存在IS04017/O和0混写风险，需归一化。"
+    },
+    {
+      "group": "六角螺母常见标准组合",
+      "standards": [
+        "GB/T6170",
+        "DIN934",
+        "ISO4032",
+        "UNI5588"
+      ],
+      "relation": "candidate_recall_only",
+      "note": "只作为候选召回，不能擅自认定完全等效。"
+    }
+  ],
+  "hard_constraints": [
+    "标准关系、商品关系、允许替代关系必须分开处理。",
+    "除 explicit_equivalences 中启用且适用范围匹配的关系外，不声明其他标准完全等效。",
+    "客户明确指定标准时，候选标准不匹配必须降权并提示风险。"
+  ]
+}

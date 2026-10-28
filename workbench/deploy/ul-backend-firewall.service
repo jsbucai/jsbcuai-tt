@@ -1,0 +1,13 @@
+[Unit]
+Description=Limit UL backend access to Caddy
+Before=docker.service
+After=network-pre.target
+PartOf=docker.service
+
+[Service]
+Type=oneshot
+ExecStart=/usr/local/sbin/ul-restrict-backend
+RemainAfterExit=yes
+
+[Install]
+WantedBy=multi-user.target docker.service

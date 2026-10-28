@@ -1,0 +1,16 @@
+[Unit]
+Description=Isolated display for purchase collector and manual verification
+
+[Service]
+Type=simple
+User=ulcollector
+Group=ulcollector
+UMask=0077
+ExecStart=/opt/ul-purchase-collector/deploy/start-display.sh
+ExecStartPost=/usr/bin/sleep 1
+Restart=on-failure
+RestartSec=5
+NoNewPrivileges=true
+ProtectSystem=full
+ProtectHome=true
+

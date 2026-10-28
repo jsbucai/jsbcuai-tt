@@ -1,0 +1,24 @@
+[Unit]
+Description=UL confirmed product creation queue, one durable job
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+User=ulcollector
+Group=ulcollector
+WorkingDirectory=/opt/ul-workbench/service
+Environment=PYTHONPATH=/opt/ul-workbench/service
+Environment=PYTHONDONTWRITEBYTECODE=1
+Environment=TZ=Asia/Shanghai
+# Read contract and single-write recovery were verified before enabling this
+# host gate. Creation still needs one frozen administrator confirmation.
+ExecStart=/usr/bin/flock --conflict-exit-code=0 -n /opt/ul-workbench/service/runtime/data/.web-browser-lane.lock /opt/ul-sales-runner/venv/bin/python /opt/ul-workbench/service/tools/sales_new_product_worker.py --runtime /opt/ul-workbench/service/runtime/data --vault /opt/ul-workbench/service/runtime/data/secrets/erp.json --rules-root /opt/ul-workbench/deploy/skills/ul-sales-order --allow-create
+UMask=0077
+NoNewPrivileges=true
+MemoryMax=512M
+CPUQuota=100%
+TimeoutStartSec=480s
+KillMode=control-group
+PrivateTmp=true
+InaccessiblePaths=/home/ulcodex/.codex /etc/ul-purchase /etc/ul-sales-web-worker

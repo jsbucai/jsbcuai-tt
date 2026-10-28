@@ -1,0 +1,31 @@
+pluginManagement {
+    repositories {
+        if (System.getenv('UL_MAVEN_BRIDGE') == '1') {
+            maven { url 'http://127.0.0.1:5192/google'; allowInsecureProtocol = true }
+            maven { url 'http://127.0.0.1:5192/central'; allowInsecureProtocol = true }
+            maven { url 'http://127.0.0.1:5192/plugins'; allowInsecureProtocol = true }
+        }
+        if (System.getenv('UL_MAVEN_BRIDGE') != '1') {
+            google()
+            maven { url 'https://maven-central.storage-download.googleapis.com/maven2' }
+            mavenCentral()
+            gradlePluginPortal()
+        }
+    }
+}
+dependencyResolutionManagement {
+    repositoriesMode.set(RepositoriesMode.FAIL_ON_PROJECT_REPOS)
+    repositories {
+        if (System.getenv('UL_MAVEN_BRIDGE') == '1') {
+            maven { url 'http://127.0.0.1:5192/google'; allowInsecureProtocol = true }
+            maven { url 'http://127.0.0.1:5192/central'; allowInsecureProtocol = true }
+        }
+        if (System.getenv('UL_MAVEN_BRIDGE') != '1') {
+            google()
+            maven { url 'https://maven-central.storage-download.googleapis.com/maven2' }
+            mavenCentral()
+        }
+    }
+}
+rootProject.name = 'ULWorkbench'
+include ':app'

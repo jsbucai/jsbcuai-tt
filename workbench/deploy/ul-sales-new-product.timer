@@ -1,0 +1,11 @@
+[Unit]
+Description=Poll UL administrator-confirmed new product queue
+
+[Timer]
+OnBootSec=50s
+OnUnitActiveSec=10s
+AccuracySec=1s
+Unit=ul-sales-new-product.service
+
+[Install]
+WantedBy=timers.target

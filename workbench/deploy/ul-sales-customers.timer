@@ -1,0 +1,11 @@
+[Unit]
+Description=UL customer directory refresh requests and working-hours schedule
+
+[Timer]
+OnBootSec=60s
+OnUnitInactiveSec=60s
+AccuracySec=5s
+Unit=ul-sales-customers.service
+
+[Install]
+WantedBy=timers.target

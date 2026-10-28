@@ -1,0 +1,42 @@
+services:
+  workbench:
+    build: .
+    image: ul-workbench:0.5.14
+    restart: unless-stopped
+    init: true
+    stop_grace_period: 60s
+    environment:
+      UL_SOURCE_MODE: api
+      UL_PUBLIC_MODE: "1"
+      UL_ADMIN_PASSWORD_HASH_FILE: /app/service/runtime/data/secrets/admin-password.hash
+      UL_ERP_VAULT: /app/service/runtime/data/secrets/erp.json
+      UL_PURCHASE_SNAPSHOT_DIR: /app/purchase-snapshots
+      UL_PURCHASE_PREVIEW_DIR: /app/purchase-preview
+      UL_LOGISTICS_WRITE_ENABLED: "${UL_LOGISTICS_WRITE_ENABLED:-0}"
+      UL_LOGISTICS_WRITE_SCOPE: "${UL_LOGISTICS_WRITE_SCOPE:-}"
+      UL_LOGISTICS_WRITE_MAX_PER_JOB: "${UL_LOGISTICS_WRITE_MAX_PER_JOB:-0}"
+      UL_LOGISTICS_WRITE_ALLOWLIST: "${UL_LOGISTICS_WRITE_ALLOWLIST:-}"
+      UL_IGNORED_ORDER_IDS: "${UL_IGNORED_ORDER_IDS:-1065162560186823523,1153209024013425320}"
+      TZ: Asia/Shanghai
+    ports:
+      - "${UL_BIND_ADDRESS:-127.0.0.1}:5191:5191"
+    volumes:
+      - ${UL_DATA_DIR:-./service/runtime/data}:/app/service/runtime/data
+      - ${UL_RELEASE_DIR:-./releases}:/app/releases:ro
+      # Collector snapshots are 0700/0600; host owner must be uid 10001.
+      # Keep ERP login credentials outside this mounted output directory.
+      - ${UL_PURCHASE_SNAPSHOT_HOST_DIR:-./service/runtime/data/purchase-snapshots}:/app/purchase-snapshots:ro
+      - ${UL_PURCHASE_PREVIEW_HOST_DIR:-./service/runtime/data/purchase-preview}:/app/purchase-preview:ro
+    read_only: true
+    tmpfs:
+      - /tmp:size=64m,mode=1777
+    cap_drop: [ALL]
+    security_opt: [no-new-privileges:true]
+    mem_limit: 1536m
+    cpus: 2
+    pids_limit: 128
+    logging:
+      driver: json-file
+      options:
+        max-size: 10m
+        max-file: "3"

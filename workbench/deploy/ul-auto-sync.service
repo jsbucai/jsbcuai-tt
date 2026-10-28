@@ -1,0 +1,9 @@
+[Unit]
+Description=Queue UL business-hours ERP refresh and authorized logistics differences
+After=docker.service network-online.target
+Requires=docker.service
+
+[Service]
+Type=oneshot
+WorkingDirectory=/opt/ul-workbench
+ExecStart=/usr/bin/docker compose exec -T workbench python auto_enqueue.py workday

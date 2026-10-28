@@ -1,0 +1,3 @@
+# Optional sales attachment text-layer extraction. Not included in production
+# API requirements until the attachment review integration is accepted.
+pypdf==6.19.0

@@ -1,0 +1,38 @@
+{
+  "version": "V1",
+  "updated_by": "Codex",
+  "purpose": "定义客户料号匹配范围。普通客户料号默认只在同客户内生效；达涅利体系客户使用同一套达涅利料号时，可开放为达涅利集团全局料号匹配。",
+  "customer_groups": [
+    {
+      "group_code": "DANIELI",
+      "group_name": "达涅利体系",
+      "match_customer_name_contains": ["达涅利", "DANIELI"],
+      "match_part_number_patterns": [
+        {
+          "raw_pattern": "^[0-9]\\.[0-9]{6}\\.[A-Z]$",
+          "normalized_pattern": "^[0-9]{7}[A-Z]$",
+          "examples": ["0.000452.M", "0.589663.P", "5.558612.D"],
+          "note": "此格式视为达涅利料号，可跨达涅利配件厂和使用达涅利料号的客户全局匹配。"
+        }
+      ],
+      "part_number_scope": "group_global",
+      "evidence": "历史订单中达涅利相关客户4个，客户料号3374个；其中3217个料号唯一对应一个ERP编码，唯一率约95.35%。业务规则补充：0.000452.M这类格式本身即为达涅利料号，即使客户名称不是达涅利也可纳入达涅利全局料号库。",
+      "auto_confirm_policy": {
+        "allow_group_part_unique_match": true,
+        "require_unique_erp_code": true,
+        "multi_erp_code_handling": "人工确认",
+        "notes": "同一达涅利料号出现多个ERP编码时不得自动确认，应展示历史编码分布。"
+      }
+    }
+  ],
+  "default_policy": {
+    "part_number_scope": "same_customer_only",
+    "allow_global_part_match": false,
+    "notes": "非达涅利客户料号默认不跨客户共享，除非后续人工确认并加入客户集团规则。"
+  },
+  "hard_constraints": [
+    "客户料号命中不能覆盖规格、等级、表面处理的明确冲突。",
+    "客户料号历史多ERP编码时，不自动确认。",
+    "客户料号规则只建立匹配证据，不修改ERP商品编码。"
+  ]
+}

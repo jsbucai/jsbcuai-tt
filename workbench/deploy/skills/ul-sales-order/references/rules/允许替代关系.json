@@ -1,0 +1,40 @@
+{
+  "version": "V1",
+  "updated_by": "Codex",
+  "purpose": "记录经业务明确确认的允许替代关系。仅在适用条件完全满足时用于匹配，不改变客户原始描述。",
+  "rules": [
+    {
+      "rule_id": "FLAT_WASHER_140HV_TO_200HV",
+      "product_family": "平垫圈",
+      "attribute": "等级",
+      "customer_value": "140HV",
+      "match_as": "200HV",
+      "scope": "全局",
+      "status": "启用",
+      "applicable_standards": ["GB/T97.1", "DIN125", "ISO7089", "UNI6592"],
+      "material_scope": "carbon_steel_only",
+      "evidence": "2026-09-18 业务确认：平垫统一用200HV，规则可复用。",
+      "remark_policy": "销售订单备注保留客户原始140HV描述。"
+    },
+    {
+      "rule_id": "FLAT_WASHER_UNSPECIFIED_TO_200HV",
+      "product_family": "平垫圈",
+      "attribute": "等级",
+      "customer_value": "",
+      "match_as": "200HV",
+      "scope": "全局",
+      "status": "启用",
+      "applicable_standards": ["GB/T97.1", "DIN125", "ISO7089", "UNI6592"],
+      "material_scope": "carbon_steel_only",
+      "evidence": "2026-09-23 业务确认：仅标准平垫圈碳钢件在客户未单列硬度时按200HV扩大编码匹配范围。",
+      "remark_policy": "销售订单备注保留客户原始描述，不额外改写为200HV。"
+    }
+  ],
+  "constraints": [
+    "只有明确列入本文件且状态为启用的关系才允许自动替代。",
+    "200HV扩大匹配仅适用于GB/T97.1、DIN125、ISO7089、UNI6592标准平垫圈的碳钢件。",
+    "特殊材质、倒角型、大平垫和非标平垫不得套用200HV扩大匹配。",
+    "产品族、标准、规格、特殊材质和表面处理仍必须满足硬匹配。",
+    "替代只影响ERP编码匹配，客户原始描述不得改写。"
+  ]
+}

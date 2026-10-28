@@ -1,0 +1,70 @@
+{
+  "version": "V1",
+  "updated_by": "Codex",
+  "purpose": "订单商品字段解析与候选评分的基础规则。规则来自商品列表、历史订单和三张基线表。",
+  "order_remark_format": {
+    "delimiter": "#",
+    "segments": [
+      "订单号",
+      "项目号",
+      "订单行",
+      "客户料号",
+      "商品名称",
+      "商品标准规格",
+      "商品等级",
+      "表面处理",
+      "数量",
+      "系统编码"
+    ],
+    "note": "历史单据备注采用10段结构；新订单Excel可能直接给出列字段。"
+  },
+  "normalization": {
+    "case": "upper_for_latin",
+    "full_width_to_half_width": true,
+    "spec_multiply_symbols": ["×", "*", "X"],
+    "blank_surface_handling": "未指定，不代表任意表面处理可接受"
+  },
+  "spec_parse_rules": [
+    {"pattern": "M{diameter}X{length}", "examples": ["M20*100", "M16×80"], "fields": ["直径", "长度"]},
+    {"pattern": "{standard} {diameter}", "examples": ["GB93 20", "GB97.1 10"], "fields": ["标准", "直径"], "normalize_to": "M{diameter}"},
+    {"pattern": "{standard} M{diameter}", "examples": ["GB6170 M20"], "fields": ["标准", "直径"]},
+    {"pattern": "{standard} {diameter}*{length}", "examples": ["GB/T5783 12*35"], "fields": ["标准", "直径", "长度"], "normalize_to": "M{diameter}X{length}"}
+  ],
+  "candidate_generation_order": [
+    "同客户+客户料号唯一历史命中",
+    "达涅利集团全局客户料号唯一历史命中",
+    "同客户+客户料号+完整需求历史命中",
+    "同客户+完整需求历史命中",
+    "同客户+名称+规格历史命中",
+    "商品库属性匹配",
+    "规则库同义词扩展召回"
+  ],
+  "initial_scoring_weights": {
+    "同客户料号唯一命中": 300,
+    "同客户料号+完整需求命中": 260,
+    "同客户完整需求命中": 220,
+    "同客户名称+规格命中": 120,
+    "商品名称或产品族匹配": 90,
+    "规格精确匹配": 130,
+    "标准匹配": 100,
+    "等级匹配": 65,
+    "表面处理匹配": 70,
+    "两年历史使用加分上限": 30
+  },
+  "risk_penalties": {
+    "规格不一致": -220,
+    "标准不匹配": -80,
+    "等级不一致": -45,
+    "表面处理不一致": -60,
+    "产品族不一致": -70
+  },
+  "auto_confirm_constraints": [
+    "Top1与Top2分差足够大",
+    "规格无冲突",
+    "标准无明显冲突",
+    "等级无冲突",
+    "表面处理无冲突",
+    "客户未指定字段不作为任意替代许可",
+    "规则库召回但历史不足时仍需人工确认"
+  ]
+}

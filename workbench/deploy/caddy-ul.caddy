@@ -1,0 +1,24 @@
+# Merge into the existing CT 102 Caddyfile; retain household routes.
+https://ul.yingyinghome.com:8443 {
+    tls /etc/caddy/tls/ul-fullchain.cer /etc/caddy/tls/ul.key
+    encode zstd gzip
+    header {
+        Strict-Transport-Security "max-age=31536000"
+        X-Content-Type-Options "nosniff"
+        Cache-Control "no-store"
+        -Server
+    }
+    request_body {
+        max_size 2MB
+    }
+    @root path /
+    respond @root "UL 随行服务已连接，请使用 App 登录。" 200
+    reverse_proxy 192.168.100.31:5191 {
+        header_up X-Forwarded-For {remote_host}
+        header_up X-Forwarded-Proto https
+        transport http {
+            dial_timeout 5s
+            response_header_timeout 30s
+        }
+    }
+}

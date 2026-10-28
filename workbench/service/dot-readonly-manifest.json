@@ -1,0 +1,18 @@
+{
+  "contract": "dot-ul-readonly/2",
+  "base_image_id": "sha256:877f0d6dec4a357a5d3fb88b4f8cd619a1c49a22a5108ee30f882277030283ee",
+  "sha256": {
+    "app.py": "3fec8aac9cc19cbe237311616db1951ba7537ef47235b79989a531d958ef4220",
+    "core/api_source.py": "6aa9af87b6dac49706e33dabe169c6807c44a5df68e6c034156be8eae67d1bd5",
+    "core/auth.py": "7b224cf2b12b580bde23d1261f7d8ee4c9d0117caeee30c4f2be2de03934ec1f",
+    "core/customer_orders.py": "8157bf74cade1493460612beb21850bbe49f2f16144fcf3a4e94a247bb308cbd",
+    "core/daily_work.py": "8e11276486e55521a693dda7c66cb876c661e958e788ffd6eb0a9d6023a1db07",
+    "core/dot_readonly.py": "e025b9a5db63d0a097c7b2e0c352b4a05d2ac658d113151143d38a91c9390191",
+    "core/procurement_projection.py": "a30c7dae3c3bf269b0bdec7bde2b8169b249ffe098a0d83232e2ae77eebf987a",
+    "core/queries.py": "7b4825931d7bfa7bf2434160b6c23dab7ba91f2b1d2073204cbf367cc4bbbbfe",
+    "core/sql_queries.py": "c87eb2e85695cb0ca3c657b6a8fc4fd7685428d328315d49ef7c2a3ce85aeee8",
+    "core/store.py": "062325c289eab26f7b3bfb8ce97779df495cb4a58544228bc845f71184ebcd78",
+    "core/task_board.py": "e53aa2c2bbb619615a8b6b839e92698bf7aeb4d5b8cf1c45c12d150103ebda18",
+    "run.py": "dacb8bcd87b6d1f743e0022cd0e114504df227f0a8da252a3201b22de63ed519"
+  }
+}
