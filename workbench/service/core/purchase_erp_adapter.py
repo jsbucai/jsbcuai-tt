@@ -28,12 +28,13 @@ import hashlib
 import re
 from dataclasses import asdict, dataclass
 from datetime import datetime
-from decimal import Decimal, InvalidOperation
+from decimal import Decimal, ROUND_HALF_UP, InvalidOperation
 from time import time
 from zoneinfo import ZoneInfo
 
 from .purchase_submission import (ErpPurchaseDraft, PreparedPurchaseDraft, PurchaseAdapterCapabilities,
     PurchaseDraftLookup, PurchaseDraftRequest, PurchaseSubmissionBlocked, _hash)
+from .sales_pricing import quote_basis, quote_price
 
 OFFICIAL_WRITE_METHOD = 'erp.purchaseorder.add'
 OFFICIAL_WRITE_REFERENCE = 'http://d7safe.mygjp.com.cn:8020/web/#/erpapi/317'
@@ -60,6 +61,7 @@ CONTRACT = {
 }
 OFFICIAL_CONTRACT_HASH = hashlib.sha256(_hash(CONTRACT).encode()).hexdigest()
 PTYPE_WINDOW = {'begintime': '1900-01-01 00:00:00', 'endtime': '2100-01-01 00:00:00', 'timetype': 1, 'isall': True}
+PURCHASE_TAX_PERCENT = Decimal('13')
 
 
 class PurchaseDirectoryError(Exception):
@@ -216,6 +218,25 @@ def base_unit(product):
     return 1, parsed
 
 
+def erp_line_prices(quantity, unit_price, tax_basis):
+    """Turn a workspace deal into ERP 折前单价, 价税合计 and tax=13.
+
+    The recorded unit price keeps the row's 含税 or 未税 meaning. 含税 is
+    divided by 1.13; 未税 is already the untaxed price. The unit is rounded
+    half-up to three decimals, the line amount to cents, then 13% tax is
+    added. ``assdpprice`` and ``asstpprice`` receive that untaxed unit.
+    ``total`` is the tax-inclusive amount, the same shape the sales write uses.
+    """
+    try:
+        basis = quote_basis(tax_basis)
+        unit_text, untaxed_text = quote_price(quantity, unit_price, basis)
+    except ValueError as error:
+        raise PurchaseDirectoryError(str(error)) from error
+    untaxed_amount = Decimal(untaxed_text)
+    tax_amount = (untaxed_amount * Decimal('0.13')).quantize(Decimal('0.01'), rounding=ROUND_HALF_UP)
+    return Decimal(unit_text), untaxed_amount + tax_amount, PURCHASE_TAX_PERCENT
+
+
 def assemble_order(*, number, when, delivery, total, warehouse_id, supplier_id, employee_id,
                    summary, comment, product, sku, quantity, unit_price, tax):
     unit, rate = base_unit(product)
@@ -304,6 +325,7 @@ class PurchaseOrderDraftAdapter:
             amount = Decimal(str(request.line.amount))
             if not amount.is_finite() or abs(price * quantity - amount) > Decimal('0.01'):
                 raise PurchaseDirectoryError('单价乘数量与成交金额不一致')
+            untaxed, gross, tax = erp_line_prices(quantity, price, request.line.tax_basis)
             moment = self._moment()
             delivery = request.line.delivery_date
             day = _day(delivery, moment.date()) if delivery else moment.date()
@@ -312,13 +334,13 @@ class PurchaseOrderDraftAdapter:
             number = document_number(request.external_reference)
             basis = '含税' if request.line.tax_basis == '含税' else '未税'
             comment = (f'{request.line.note} 单据{number} 引用{request.external_reference} '
-                       f'税价口径{basis}。单价原样写入折前/折后单价，税率按官方默认0，未拆税。'
+                       f'税价口径{basis}。折前单价为未税 {untaxed}，税率 13%，单据金额为价税合计 {gross}。'
                        '请在进货订单管理核对未审核、未付款、未入库。').strip()
             order = assemble_order(
                 number=number, when=moment, delivery=datetime.combine(day, moment.time()),
-                total=price * quantity, warehouse_id=warehouse['id'], supplier_id=supplier['id'],
+                total=gross, warehouse_id=warehouse['id'], supplier_id=supplier['id'],
                 employee_id=self.employee_id, summary=f'进货订单{number}', comment=comment,
-                product=product, sku=sku, quantity=quantity, unit_price=price, tax=Decimal(0))
+                product=product, sku=sku, quantity=quantity, unit_price=untaxed, tax=tax)
             wire = wire_purchaseorder(order)
         except PurchaseSubmissionBlocked:
             raise

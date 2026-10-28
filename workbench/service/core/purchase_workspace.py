@@ -251,7 +251,7 @@ class PurchaseWorkspace:
         cap = getattr(self.submission.adapter, 'capabilities', None)
         readback = bool(getattr(cap, 'readback_contract_verified', False) and getattr(cap, 'complete_unique_lookup', False))
         if ready and not readback:
-            message = '进货订单写入已开放。只调用 erp.purchaseorder.add，不付款、不审核。官方没有草稿字段，也没有按单号回查。写入后请到管家婆按单据编号人工核对未审核。'
+            message = '进货订单写入已开放。只调用 erp.purchaseorder.add，不付款、不审核。含税成交价先除以 1.13，未税成交价原样作为未税折前单价，税率 13%，单据金额为价税合计。官方没有草稿字段，也没有按单号回查。写入后请到管家婆按单据编号人工核对未审核。'
         elif ready:
             message = '采购订单草稿试写已开放。只创建未审核草稿，不付款、不审核；结果不明时只回查。'
         elif enabled:

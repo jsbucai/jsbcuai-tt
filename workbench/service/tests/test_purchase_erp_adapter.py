@@ -8,7 +8,7 @@ import pytest
 
 from core.erp_api import ErpClient, ErpUnavailable, PURCHASE_ORDER_ADD_METHOD
 from core.purchase_erp_adapter import (OFFICIAL_CONTRACT_HASH, READBACK_METHOD, assemble_order,
-    attach_purchase_adapter, wire_purchaseorder)
+    attach_purchase_adapter, erp_line_prices, wire_purchaseorder)
 from core.purchase_submission import PurchaseSubmission, PurchaseSubmissionPolicy
 from core.purchase_workspace import PurchaseWorkspace
 from core.purchase_workspace_data import WAREHOUSE
@@ -62,6 +62,16 @@ def test_official_body_keeps_price_and_omits_audit_and_readback_fields():
     assert body['details'][0]['assqty'] == 1 and body['total'] == 1.5
     assert 'draft' not in body and 'ischeck' not in body and 'settleaccounts' not in body
     assert READBACK_METHOD is None and len(OFFICIAL_CONTRACT_HASH) == 64
+
+
+def test_workspace_tax_basis_becomes_untaxed_unit_and_thirteen_percent():
+    from decimal import Decimal
+    unit, gross, tax = erp_line_prices('1', '1.13', '含税')
+    assert (unit, gross, tax) == (Decimal('1.000'), Decimal('1.13'), Decimal('13'))
+    unit, gross, tax = erp_line_prices('20', '2.5', '含税')
+    assert (unit, gross, tax) == (Decimal('2.212'), Decimal('49.99'), Decimal('13'))
+    unit, gross, tax = erp_line_prices('20', '2.5', '未税')
+    assert (unit, gross, tax) == (Decimal('2.500'), Decimal('56.50'), Decimal('13'))
 
 
 def _vault(tmp_path):
@@ -119,7 +129,10 @@ def test_workspace_write_uses_receipt_and_never_sends_twice(store):
     assert catalog.calls.count(PURCHASE_ORDER_ADD_METHOD) == 1
     sent = json.loads(catalog.bodies[0])
     assert sent['btypeid'] == 9001 and sent['details'][0]['ptypeid'] == 1001
-    assert 'draft' not in sent and 'ischeck' not in sent and sent['details'][0]['tax'] == 0
+    assert 'draft' not in sent and 'ischeck' not in sent
+    assert sent['details'][0]['tax'] == 13
+    assert sent['details'][0]['assdpprice'] == 2.212 and sent['details'][0]['asstpprice'] == 2.212
+    assert sent['total'] == 49.99
     kept = engine.detail(ACTOR, item_row['id'])['allocations'][0]
     assert kept['state'] == 'ordered'
     assert kept['details']['erp_draft_status'] == 'pending_human_check'
@@ -167,6 +180,8 @@ def test_smoke_script_is_dry_run_until_number_and_confirm(tmp_path, capsys):
     printed = json.loads(capsys.readouterr().out)
     assert printed['dry_run'] is True and printed['method'] == PURCHASE_ORDER_ADD_METHOD
     assert printed['business_body']['purchaseorder']['details'][0]['assqty'] == 1
+    assert printed['business_body']['purchaseorder']['details'][0]['tax'] == 13
+    assert printed['business_body']['purchaseorder']['details'][0]['assdpprice'] == 1.5
     assert 'appkey' not in printed['business_body']['purchaseorder']
     assert 'secret' not in json.dumps(printed['business_body'])
     assert PURCHASE_ORDER_ADD_METHOD not in catalog.calls

@@ -13,6 +13,8 @@ Run inside the workbench container, which already has ``UL_ERP_VAULT``:
         --quantity 1 --unit-price 1.00 --remark '测试单-可删除'
 
 Add ``--number`` from that preview and ``--confirm-write`` to send once.
+``--unit-price`` is written unchanged as 折前/折后单价. ``--tax-rate`` defaults
+to 13. The workbench path, not this script, converts 含税/未税 before sending.
 """
 from __future__ import annotations
 
@@ -124,7 +126,7 @@ def run(argv, client_factory, lock_path=DEFAULT_LOCK):
     parser.add_argument('--unit-price', required=True)
     parser.add_argument('--remark', required=True)
     parser.add_argument('--number', default='')
-    parser.add_argument('--tax-rate', default='0')
+    parser.add_argument('--tax-rate', default='13')
     parser.add_argument('--delivery-date', default='')
     parser.add_argument('--handler-id', default='')
     parser.add_argument('--sku-id', default='')
