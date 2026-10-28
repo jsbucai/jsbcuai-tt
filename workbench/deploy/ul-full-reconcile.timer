@@ -1,0 +1,9 @@
+[Unit]
+Description=Run UL full ERP reconciliation monthly at low traffic
+
+[Timer]
+OnCalendar=*-*-01 03:40:00 Asia/Shanghai
+RandomizedDelaySec=300
+
+[Install]
+WantedBy=timers.target

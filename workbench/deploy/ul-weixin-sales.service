@@ -1,0 +1,32 @@
+[Unit]
+Description=Owner Weixin sales bridge using the UL App draft and browser queues
+After=network-online.target
+Wants=network-online.target
+ConditionPathExists=/etc/ul-weixin-sales/config.json
+StartLimitIntervalSec=600
+StartLimitBurst=3
+
+[Service]
+Type=simple
+User=root
+WorkingDirectory=/opt/ul-workbench/service
+Environment=PYTHONPATH=/opt/ul-workbench/service
+Environment=PYTHONDONTWRITEBYTECODE=1
+Environment=TZ=Asia/Shanghai
+ExecStart=/opt/ul-sales-runner/venv/bin/python /opt/ul-workbench/service/tools/weixin_sales_worker.py
+Restart=on-failure
+RestartSec=30
+MemoryMax=320M
+CPUQuota=25%
+Nice=15
+TimeoutStopSec=45
+UMask=0077
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=strict
+ProtectHome=true
+ReadWritePaths=/var/lib/ul-weixin-sales /opt/ul-workbench/service/runtime/data
+InaccessiblePaths=/etc/ul-weixin-notify /home/ulcodex/.codex /opt/ul-workbench/service/runtime/data/secrets /etc/ul-purchase /etc/ul-sales-web-worker
+
+[Install]
+WantedBy=multi-user.target

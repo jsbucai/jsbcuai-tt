@@ -1,0 +1,26 @@
+[Unit]
+Description=UL bounded N150 inspection and Codex diagnosis
+After=network-online.target docker.service
+
+[Service]
+Type=oneshot
+User=root
+WorkingDirectory=/opt/ul-guardian
+ExecStart=/usr/bin/python3 /opt/ul-guardian/n150_guardian.py
+Environment=TZ=Asia/Shanghai
+Environment=PYTHONDONTWRITEBYTECODE=1
+Nice=15
+IOSchedulingClass=idle
+CPUQuota=50%
+MemoryHigh=384M
+MemoryMax=512M
+TasksMax=96
+TimeoutStartSec=220
+KillMode=control-group
+UMask=0077
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=strict
+ReadWritePaths=/var/lib/ul-guardian /var/lib/ul-guardian-codex /home/ulcodex/.codex /opt/ul-workbench/service/runtime/data -/mnt/nas/开发项目/UL随行
+InaccessiblePaths=/etc/ul-purchase /etc/ul-sales-web-worker /opt/ul-workbench/service/runtime/data/secrets -/etc/ul-weixin-notify -/var/lib/ul-weixin-notify -/etc/ul-weixin-sales -/var/lib/ul-weixin-sales
+

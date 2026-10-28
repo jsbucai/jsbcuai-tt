@@ -1,0 +1,284 @@
+{
+  "type": "object",
+  "properties": {
+    "assistant_text": {
+      "type": "string",
+      "maxLength": 10000
+    },
+    "status": {
+      "type": "string",
+      "enum": [
+        "needs_clarification",
+        "ready_for_review"
+      ]
+    },
+    "draft": {
+      "type": "object",
+      "properties": {
+        "customer_order_no": {
+          "type": "string",
+          "maxLength": 500
+        },
+        "delivery_date": {
+          "type": "string",
+          "maxLength": 100
+        },
+        "note": {
+          "type": "string",
+          "maxLength": 5000
+        },
+        "tax_basis": {
+          "type": "string",
+          "enum": [
+            "tax_inclusive",
+            "tax_exclusive"
+          ]
+        },
+        "tax_rate": {
+          "type": "number",
+          "enum": [
+            13
+          ]
+        },
+        "lines": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "properties": {
+              "source_ids": {
+                "type": "array",
+                "items": {
+                  "type": "string",
+                  "maxLength": 200
+                },
+                "minItems": 1,
+                "maxItems": 50
+              },
+              "source_quote": {
+                "type": "string",
+                "maxLength": 5000
+              },
+              "product_code": {
+                "type": "string",
+                "maxLength": 500
+              },
+              "original_name": {
+                "type": "string",
+                "maxLength": 500
+              },
+              "original_spec": {
+                "type": "string",
+                "maxLength": 500
+              },
+              "original_material": {
+                "type": "string",
+                "maxLength": 500
+              },
+              "standard": {
+                "type": "string",
+                "maxLength": 500
+              },
+              "grade": {
+                "type": "string",
+                "maxLength": 500
+              },
+              "surface": {
+                "type": "string",
+                "maxLength": 500
+              },
+              "customer_part_no": {
+                "type": "string",
+                "maxLength": 500
+              },
+              "unit": {
+                "type": "string",
+                "maxLength": 500
+              },
+              "delivery_date": {
+                "type": "string",
+                "maxLength": 500
+              },
+              "project_no": {
+                "type": "string",
+                "maxLength": 500
+              },
+              "line_no": {
+                "type": "string",
+                "maxLength": 500
+              },
+              "drawing_no": {
+                "type": "string",
+                "maxLength": 500
+              },
+              "quantity": {
+                "type": [
+                  "string",
+                  "number",
+                  "null"
+                ]
+              },
+              "unit_price": {
+                "type": [
+                  "string",
+                  "number",
+                  "null"
+                ]
+              }
+            },
+            "required": [
+              "source_ids",
+              "source_quote",
+              "product_code",
+              "original_name",
+              "original_spec",
+              "original_material",
+              "standard",
+              "grade",
+              "surface",
+              "customer_part_no",
+              "unit",
+              "delivery_date",
+              "project_no",
+              "line_no",
+              "drawing_no",
+              "quantity",
+              "unit_price"
+            ],
+            "additionalProperties": false
+          },
+          "maxItems": 500
+        }
+      },
+      "required": [
+        "customer_order_no",
+        "delivery_date",
+        "note",
+        "tax_basis",
+        "tax_rate",
+        "lines"
+      ],
+      "additionalProperties": false
+    },
+    "questions": {
+      "type": "array",
+      "items": {
+        "type": "string",
+        "maxLength": 1000
+      },
+      "maxItems": 30
+    },
+    "new_product_suggestions": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "source_ids": {
+            "type": "array",
+            "items": {
+              "type": "string",
+              "maxLength": 200
+            },
+            "minItems": 1,
+            "maxItems": 50
+          },
+          "source_quote": {
+            "type": "string",
+            "maxLength": 5000
+          },
+          "product_name": {
+            "type": "string",
+            "maxLength": 500
+          },
+          "spec": {
+            "type": "string",
+            "maxLength": 500
+          },
+          "standard": {
+            "type": "string",
+            "maxLength": 500
+          },
+          "grade": {
+            "type": "string",
+            "maxLength": 500
+          },
+          "surface": {
+            "type": "string",
+            "maxLength": 500
+          },
+          "material": {
+            "type": "string",
+            "maxLength": 500
+          },
+          "base_unit": {
+            "type": "string",
+            "enum": [
+              "支"
+            ]
+          },
+          "reason": {
+            "type": "string",
+            "maxLength": 1000
+          }
+        },
+        "required": [
+          "source_ids",
+          "source_quote",
+          "product_name",
+          "spec",
+          "standard",
+          "grade",
+          "surface",
+          "material",
+          "base_unit",
+          "reason"
+        ],
+        "additionalProperties": false
+      },
+      "maxItems": 500
+    },
+    "source_coverage": {
+      "type": "array",
+      "maxItems": 600,
+      "items": {
+        "type": "object",
+        "properties": {
+          "source_id": {
+            "type": "string",
+            "maxLength": 200
+          },
+          "status": {
+            "type": "string",
+            "enum": [
+              "complete",
+              "needs_review"
+            ]
+          },
+          "line_count": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "detail": {
+            "type": "string",
+            "maxLength": 2000
+          }
+        },
+        "required": [
+          "source_id",
+          "status",
+          "line_count",
+          "detail"
+        ],
+        "additionalProperties": false
+      }
+    }
+  },
+  "required": [
+    "assistant_text",
+    "status",
+    "draft",
+    "questions",
+    "new_product_suggestions",
+    "source_coverage"
+  ],
+  "additionalProperties": false
+}

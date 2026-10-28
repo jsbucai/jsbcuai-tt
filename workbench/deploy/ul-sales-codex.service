@@ -1,0 +1,29 @@
+[Unit]
+Description=UL owner Codex assisted sales drafts, one durable job
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+# The root worker exports a private, credential-free job and runs only the
+# inference child as ulcodex. It does not give ulcodex the live SQLite runtime.
+User=root
+Group=root
+WorkingDirectory=/opt/ul-workbench/service
+Environment=PYTHONPATH=/opt/ul-workbench/service
+Environment=PYTHONDONTWRITEBYTECODE=1
+Environment=TZ=Asia/Shanghai
+# Timers may become aligned after deployment. Wait briefly for an idle
+# poller to finish instead of indefinitely losing every nonblocking poll.
+# The same shared lock still permits only one heavy worker at a time.
+ExecStart=/usr/bin/flock --conflict-exit-code=0 --timeout=5 /opt/ul-workbench/service/runtime/data/.web-browser-lane.lock /opt/ul-sales-runner/venv/bin/python /opt/ul-workbench/service/tools/sales_codex_worker.py --runtime /opt/ul-workbench/service/runtime/data --jobs-root /var/lib/ul-sales-codex/jobs --rules-root /opt/ul-workbench/deploy/skills/ul-sales-order --codex-binary /home/ulcodex/.local/bin/codex --codex-user ulcodex --document-python /opt/ul-sales-runner/deps/ocr-20261007/document-venv/bin/python --pdftoppm-path /opt/ul-sales-runner/deps/pdf-20261007/pdftoppm
+UMask=0077
+NoNewPrivileges=true
+MemoryMax=640M
+CPUQuota=100%
+TimeoutStartSec=480s
+KillMode=control-group
+PrivateTmp=true
+# The owner CLI refreshes its own OAuth credentials in place. Its tools are
+# disabled by the runner; credentials are never included in a job or output.
+InaccessiblePaths=/etc/ul-purchase /etc/ul-sales-web-worker /opt/ul-workbench/service/runtime/data/secrets

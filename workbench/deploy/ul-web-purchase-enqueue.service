@@ -1,0 +1,13 @@
+[Unit]
+Description=Queue UL unfinished purchase browser download
+After=network-online.target
+
+[Service]
+Type=oneshot
+User=ulcollector
+Group=ulcollector
+WorkingDirectory=/opt/ul-workbench/service
+Environment=TZ=Asia/Shanghai
+ExecStart=/usr/bin/python3 /opt/ul-workbench/service/tools/web_operation_worker.py --runtime /opt/ul-workbench/service/runtime/data enqueue-download --slot auto
+UMask=0077
+NoNewPrivileges=true

@@ -1,0 +1,34 @@
+[
+  {
+    "source": "logistics_allocation.py",
+    "sha256": "7dfca4d949bd961d5370698dabd203766140f8d26d7ca8455b2c05080569b1ad",
+    "functions": [
+      "number",
+      "text",
+      "Demand",
+      "inventory_category",
+      "allocate",
+      "assign_order_categories"
+    ]
+  },
+  {
+    "source": "receipt_warning.py",
+    "sha256": "4c6bd468b2317a136c32937d621c142b8d98fea10c44744a506b7d2cfd70df4f",
+    "functions": [
+      "group_key",
+      "reconcile",
+      "order_key",
+      "previous_orders",
+      "classify"
+    ]
+  },
+  {
+    "source": "procurement_urging.py",
+    "sha256": "ff4fa239f8eb60a046a61d37710208c56ce785dcd3e68f5e06dcb4a5a8437864",
+    "functions": [
+      "rules",
+      "follow_up_date",
+      "classify"
+    ]
+  }
+]

@@ -1,0 +1,11 @@
+[Unit]
+Description=UL finite on-host observation through 2026-10-16 final report
+
+[Timer]
+OnCalendar=2026-10-12..15 *:02/5:00 Asia/Shanghai
+OnCalendar=2026-10-16 00:02:00 Asia/Shanghai
+Persistent=true
+AccuracySec=15s
+
+[Install]
+WantedBy=timers.target

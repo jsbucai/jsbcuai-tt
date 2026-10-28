@@ -1,0 +1,156 @@
+{
+  "version": "V1",
+  "updated_by": "Codex",
+  "purpose": "把客户订单中的商品名称、简称、带表面处理前缀的名称归一到产品族。仅用于候选召回和评分，不自动合并ERP编码。",
+  "canonical_rules": [
+    {
+      "canonical": "六角头螺栓",
+      "synonyms": [
+        "六角头螺栓",
+        "螺栓",
+        "外六角螺栓",
+        "复合涂层六角头螺栓",
+        "HEXAGON HEAD BOLT",
+        "HEX HEAD BOLT",
+        "HEXAGON HEAD SCREW",
+        "HEX HEAD SCREW"
+      ],
+      "evidence": "历史订单中六角头螺栓映射六角头螺栓12895行，螺栓映射六角头螺栓420行，复合涂层六角头螺栓映射六角头螺栓153行。"
+    },
+    {
+      "canonical": "六角螺母",
+      "synonyms": [
+        "六角螺母",
+        "螺母",
+        "I型六角螺母",
+        "复合涂层六角螺母"
+      ],
+      "evidence": "历史订单中六角螺母映射六角螺母3844行，I型六角螺母映射六角螺母203行，复合涂层六角螺母映射六角螺母125行。螺母存在扣紧螺母等歧义，需结合标准规格。"
+    },
+    {
+      "canonical": "平垫圈",
+      "synonyms": [
+        "平垫圈",
+        "平垫",
+        "平垫圈A级",
+        "复合涂层平垫圈"
+      ],
+      "evidence": "历史订单中平垫圈/平垫大量映射到平垫圈相关产品族。"
+    },
+    {
+      "canonical": "弹簧垫圈",
+      "synonyms": [
+        "弹簧垫圈",
+        "弹垫",
+        "弹簧垫",
+        "复合涂层弹垫"
+      ],
+      "evidence": "历史订单中弹簧垫圈映射弹簧垫圈1601行，弹垫映射弹簧垫圈759行。"
+    },
+    {
+      "canonical": "槽钢用方斜垫圈",
+      "synonyms": [
+        "槽钢用方斜垫圈",
+        "方斜垫圈",
+        "斜垫圈",
+        "楔形垫圈",
+        "TAPER WASHER",
+        "TAPERED WASHER",
+        "SQUARE TAPER WASHER",
+        "DIN434 TAPER WASHER",
+        "DIN 434 TAPER WASHER"
+      ],
+      "evidence": "ERP商品库中DIN434/DIN6918对应槽钢用方斜垫圈，英文TAPER WASHER应归一到斜垫圈类，不能按螺母或普通垫圈处理。"
+    },
+    {
+      "canonical": "内六角圆柱头螺钉",
+      "synonyms": [
+        "内六角圆柱头螺钉",
+        "内六角螺钉",
+        "内六角圆柱头螺栓",
+        "HEXAGON SOCKET HEAD CAP SCREW",
+        "HEX SOCKET HEAD CAP SCREW",
+        "SOCKET HEAD CAP SCREW",
+        "SOCKET CAP SCREW",
+        "ALLEN CAP SCREW",
+        "DIN912 SOCKET HEAD CAP SCREW",
+        "ISO4762 SOCKET HEAD CAP SCREW"
+      ],
+      "evidence": "历史订单中内六角圆柱头螺钉映射内六角圆柱头螺钉6967行。"
+    },
+    {
+      "canonical": "内六角沉头螺钉",
+      "synonyms": [
+        "内六角沉头螺钉",
+        "沉头内六角螺钉"
+      ],
+      "evidence": "历史订单中内六角沉头螺钉映射内六角沉头螺钉393行。"
+    },
+    {
+      "canonical": "内六角锥端紧定螺钉",
+      "synonyms": [
+        "内六角锥端紧定螺钉",
+        "锥端紧定螺钉",
+        "锥端机米螺钉",
+        "CONE POINT SET SCREW",
+        "HEXAGON SOCKET SET SCREW WITH CONE POINT",
+        "SOCKET SET SCREW CONE POINT"
+      ],
+      "evidence": "GB/T78、DIN914、ISO4027对应内六角锥端紧定螺钉，客户常简写为锥端紧定螺钉。"
+    },
+    {
+      "canonical": "开口销",
+      "synonyms": [
+        "开口销"
+      ],
+      "evidence": "历史订单中开口销映射开口销355行。"
+    },
+    {
+      "canonical": "圆柱销",
+      "synonyms": [
+        "圆柱销",
+        "内螺纹圆柱销"
+      ],
+      "evidence": "圆柱销和内螺纹圆柱销需结合商品名称和标准区分。"
+    },
+    {
+      "canonical": "小圆螺母",
+      "synonyms": [
+        "小圆螺母"
+      ],
+      "evidence": "当前API商品LM0678及客户原单明确为小圆螺母，优先于泛称螺母；不包含轴承锁紧螺母或定制圆螺母。"
+    }
+  ],
+  "ambiguous_names": [
+    {
+      "value": "螺母",
+      "handling": "可能对应六角螺母、扣紧螺母、锁紧螺母等，必须结合标准规格。"
+    },
+    {
+      "value": "螺钉",
+      "handling": "可能对应多种头型和槽型，不能单独自动确认。"
+    },
+    {
+      "value": "垫圈",
+      "handling": "可能对应平垫圈、止动垫圈、密封垫圈、齿形垫圈等，必须结合标准规格。"
+    },
+    {
+      "value": "紧定",
+      "handling": "简称，必须结合端型和标准。"
+    }
+  ],
+  "prefixes_to_strip_before_family_match": [
+    "复合涂层",
+    "镀锌",
+    "热镀锌",
+    "发黑",
+    "蓝白锌",
+    "兰白锌",
+    "达克罗",
+    "不锈钢"
+  ],
+  "hard_constraints": [
+    "商品名称同义只用于召回候选，不表示ERP编码等价。",
+    "同一简称有多产品族风险时，必须结合标准、规格、等级、表面处理。"
+  ]
+}

@@ -1,0 +1,12 @@
+[Unit]
+Description=UL consistent encrypted backup to NAS
+After=docker.service network-online.target
+Requires=docker.service
+RequiresMountsFor=/mnt/nas
+
+[Service]
+Type=oneshot
+WorkingDirectory=/opt/ul-workbench
+EnvironmentFile=/etc/ul-workbench-backup.env
+ExecStart=/bin/bash /opt/ul-workbench/deploy/backup-to-nas.sh
+UMask=0077

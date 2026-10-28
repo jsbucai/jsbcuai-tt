@@ -1,0 +1,89 @@
+plugins {
+    id 'com.android.application'
+    id 'org.jetbrains.kotlin.android'
+    id 'org.jetbrains.kotlin.plugin.compose'
+}
+android {
+    namespace 'com.ul.workbench'
+    compileSdk 35
+    defaultConfig {
+        applicationId 'com.ul.workbench'
+        minSdk 26
+        targetSdk 35
+        def releaseVersion = new Properties()
+        rootProject.file('version.properties').withInputStream { releaseVersion.load(it) }
+        versionCode releaseVersion.getProperty('versionCode').toInteger()
+        versionName releaseVersion.getProperty('versionName')
+        testInstrumentationRunner 'androidx.test.runner.AndroidJUnitRunner'
+    }
+    buildFeatures { compose true; buildConfig true }
+    compileOptions {
+        sourceCompatibility JavaVersion.VERSION_17
+        targetCompatibility JavaVersion.VERSION_17
+    }
+    kotlinOptions { jvmTarget = '17' }
+    signingConfigs {
+        debug {
+            storeFile rootProject.file('runtime/signing/debug.keystore')
+            storePassword 'android'
+            keyAlias 'androiddebugkey'
+            keyPassword 'android'
+        }
+    }
+    buildTypes {
+        debug { applicationIdSuffix '.dev'; versionNameSuffix '-dev' }
+        release { minifyEnabled false }
+    }
+    testOptions {
+        unitTests.includeAndroidResources = true
+        unitTests.all {
+            // Robolectric's native Compose renderer retains trace/recomposer
+            // state across classes. Keep one worker at a time, but recycle it
+            // regularly so the complete UI regression suite cannot exhaust
+            // the default 512 MiB test heap.
+            maxHeapSize = '1024m'
+            maxParallelForks = 1
+            // Each Robolectric class owns an Activity/Compose lifecycle. A
+            // fresh worker per class prevents a previous recomposer or paused
+            // main looper from leaking callbacks into the next class.
+            forkEvery = 1
+            systemProperty 'robolectric.dependency.repo.url', System.getenv('UL_MAVEN_BRIDGE') == '1' ? 'http://127.0.0.1:5192/central' : 'https://maven-central.storage-download.googleapis.com/maven2'
+            // JDK 17 on this Windows host decodes launcher @argfiles using the local
+            // code page. Stage only generated test classpath entries to ASCII paths;
+            // keep source and normal APK output in the user's original project.
+            doFirst {
+                if (System.getProperty('os.name').toLowerCase().contains('windows')) {
+                    def staging = new File(gradle.gradleUserHomeDir, 'ul-workbench-test-classpath')
+                    classpath = files(classpath.files.collect { entry ->
+                        if (entry.absolutePath.chars().anyMatch { c -> c > 127 }) {
+                            def slot = new File(staging, Integer.toHexString(entry.absolutePath.hashCode()))
+                            project.sync { from entry; into slot }
+                            return entry.isDirectory() ? slot : new File(slot, entry.name)
+                        }
+                        return entry
+                    })
+                }
+            }
+        }
+    }
+    packaging { resources.excludes += '/META-INF/{AL2.0,LGPL2.1}' }
+}
+dependencies {
+    implementation platform('androidx.compose:compose-bom:2025.02.00')
+    implementation 'androidx.core:core-ktx:1.15.0'
+    implementation 'androidx.activity:activity-compose:1.10.1'
+    implementation 'androidx.lifecycle:lifecycle-runtime-compose:2.8.7'
+    implementation 'androidx.lifecycle:lifecycle-viewmodel-compose:2.8.7'
+    implementation 'androidx.compose.ui:ui'
+    implementation 'androidx.compose.ui:ui-tooling-preview'
+    implementation 'androidx.compose.foundation:foundation'
+    implementation 'androidx.compose.material3:material3'
+    implementation 'org.jetbrains.kotlinx:kotlinx-coroutines-android:1.9.0'
+    debugImplementation 'androidx.compose.ui:ui-tooling'
+    debugImplementation 'androidx.compose.ui:ui-test-manifest'
+    testImplementation 'junit:junit:4.13.2'
+    testImplementation 'org.jetbrains.kotlinx:kotlinx-coroutines-test:1.9.0'
+    testImplementation 'org.robolectric:robolectric:4.14.1'
+    testImplementation 'androidx.test:core-ktx:1.6.1'
+    testImplementation 'androidx.compose.ui:ui-test-junit4'
+}

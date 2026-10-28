@@ -1,0 +1,10 @@
+[Unit]
+Description=UL storage maintenance outside business hours
+
+[Timer]
+OnCalendar=*-*-* 03:30:00 Asia/Shanghai
+Persistent=false
+RandomizedDelaySec=60
+
+[Install]
+WantedBy=timers.target

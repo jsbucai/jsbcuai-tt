@@ -1,0 +1,22 @@
+[Unit]
+Description=UL confirmed sales API submissions, one durable lane
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+User=root
+WorkingDirectory=/opt/ul-workbench/service
+Environment=PYTHONPATH=/opt/ul-workbench/service
+Environment=PYTHONDONTWRITEBYTECODE=1
+Environment=TZ=Asia/Shanghai
+ExecStart=/usr/bin/flock --conflict-exit-code=0 --timeout=5 /opt/ul-workbench/service/runtime/data/.web-browser-lane.lock /opt/ul-sales-runner/venv/bin/python /opt/ul-workbench/service/tools/sales_api_worker.py --runtime /opt/ul-workbench/service/runtime/data --vault /opt/ul-workbench/service/runtime/data/secrets/erp.json
+UMask=0077
+NoNewPrivileges=true
+MemoryMax=192M
+CPUQuota=50%
+TimeoutStartSec=480s
+KillMode=control-group
+PrivateTmp=true
+InaccessiblePaths=/home/ulcodex/.codex /etc/ul-purchase /etc/ul-sales-web-worker
+

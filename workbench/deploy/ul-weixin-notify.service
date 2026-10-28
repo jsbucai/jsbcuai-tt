@@ -1,0 +1,31 @@
+[Unit]
+Description=Owner-only UL Weixin ClawBot notifications
+After=network-online.target
+Wants=network-online.target
+ConditionPathExists=/etc/ul-weixin-notify/account.json
+StartLimitIntervalSec=600
+StartLimitBurst=3
+
+[Service]
+Type=simple
+User=root
+ExecStart=/opt/ul-sales-runner/venv/bin/python /opt/ul-guardian/weixin_guardian.py --serve
+Restart=on-failure
+RestartSec=30
+Environment=PYTHONDONTWRITEBYTECODE=1
+Environment=TZ=Asia/Shanghai
+Nice=15
+CPUQuota=15%
+MemoryMax=64M
+TimeoutStopSec=65
+UMask=0077
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=strict
+ProtectHome=true
+ReadWritePaths=/var/lib/ul-weixin-notify /var/lib/ul-weixin-sales /var/lib/ul-erp-human
+InaccessiblePaths=/opt/ul-workbench/service/runtime/data/secrets /etc/ul-purchase /etc/ul-sales-web-worker
+
+[Install]
+WantedBy=multi-user.target
+

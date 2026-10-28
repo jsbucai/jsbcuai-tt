@@ -1,0 +1,24 @@
+[Unit]
+Description=UL single browser operation worker
+Wants=network-online.target
+Requires=ul-purchase-display.service
+After=network-online.target ul-purchase-display.service
+
+[Service]
+Type=simple
+User=ulcollector
+Group=ulcollector
+WorkingDirectory=/opt/ul-workbench/service
+Environment=TZ=Asia/Shanghai
+Environment=DISPLAY=:97
+Environment=XAUTHORITY=/var/lib/ul-purchase-collector/display/.Xauthority
+ExecStart=/usr/bin/python3 /opt/ul-workbench/service/tools/web_operation_worker.py --runtime /opt/ul-workbench/service/runtime/data serve
+Restart=on-failure
+RestartSec=10
+UMask=0077
+NoNewPrivileges=true
+TimeoutStopSec=30s
+KillMode=control-group
+
+[Install]
+WantedBy=multi-user.target

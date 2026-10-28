@@ -1,0 +1,4 @@
+FROM ul-workbench:0.5.20-update-reliability
+USER root
+COPY --chown=10001:10001 service/core/daily_work.py service/core/update_jobs.py service/core/sales_assistant.py service/core/storage_capacity.py service/core/storage_retention.py service/core/maintenance_archive.py service/core/heavy_lane.py service/core/order_history_jobs.py /app/service/core/
+USER 10001

@@ -1,0 +1,5 @@
+FROM ul-workbench:0.5.21-print-adjustments
+USER root
+COPY --chown=10001:10001 service/core/classification/receipts.py /app/service/core/classification/receipts.py
+COPY --chown=10001:10001 service/core/logistics.py /app/service/core/logistics.py
+USER 10001

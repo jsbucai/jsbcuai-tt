@@ -1,0 +1,8 @@
+Flask==3.0.3
+openpyxl==3.1.4
+xlrd==2.0.2
+waitress==3.0.2
+pytest==9.1.1
+pywin32==312; sys_platform == "win32"
+playwright==1.60.0
+reportlab==4.4.10

@@ -1,0 +1,5 @@
+FROM ul-workbench:0.5.19.3-print-summary
+USER root
+COPY --chown=10001:10001 service/core/daily_work.py service/core/logistics.py service/core/business_rules.py service/core/classification_pipeline.py /app/service/core/
+COPY --chown=10001:10001 service/core/classification/allocation.py service/core/classification/receipts.py /app/service/core/classification/
+USER 10001

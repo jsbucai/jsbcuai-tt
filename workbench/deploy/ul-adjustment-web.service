@@ -1,0 +1,31 @@
+[Unit]
+Description=UL N150 serial loss and overflow web uploader
+Wants=network-online.target
+Requires=ul-purchase-display.service
+After=network-online.target ul-purchase-display.service
+
+[Service]
+Type=simple
+User=ulcollector
+Group=ulcollector
+Environment=TZ=Asia/Shanghai
+Environment=DISPLAY=:97
+Environment=XAUTHORITY=/var/lib/ul-purchase-collector/display/.Xauthority
+Environment=PYTHONDONTWRITEBYTECODE=1
+WorkingDirectory=/opt/ul-workbench/service
+ExecStart=/opt/ul-sales-runner/venv/bin/python /opt/ul-workbench/service/tools/adjustment_web_worker.py --runtime /opt/ul-workbench/service/runtime/data --config /etc/ul-adjustment-web/config.json
+Restart=on-failure
+RestartSec=15
+UMask=0077
+Nice=10
+CPUQuota=70%
+# Chromium's verified ERP import form needs slightly over 500 MB. Reclaiming
+# continuously at 500 MB stalls the UI before upload; keep the hard ceiling.
+MemoryHigh=600M
+MemoryMax=650M
+TimeoutStopSec=20
+KillMode=control-group
+NoNewPrivileges=true
+
+[Install]
+WantedBy=multi-user.target

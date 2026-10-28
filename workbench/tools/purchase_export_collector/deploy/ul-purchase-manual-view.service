@@ -1,0 +1,15 @@
+[Unit]
+Description=Loopback-only purchase CAPTCHA viewer, started by operator
+Requires=ul-purchase-display.service
+After=ul-purchase-display.service
+PartOf=ul-purchase-display.service
+
+[Service]
+Type=simple
+User=ulcollector
+Group=ulcollector
+UMask=0077
+ExecStart=/opt/ul-purchase-collector/deploy/manual-view.sh
+NoNewPrivileges=true
+ProtectSystem=full
+ProtectHome=true

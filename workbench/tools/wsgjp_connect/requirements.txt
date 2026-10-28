@@ -1,0 +1,4 @@
+Flask==3.0.3
+waitress==3.0.2
+cryptography==50.0.0
+pywin32==312; sys_platform == "win32"

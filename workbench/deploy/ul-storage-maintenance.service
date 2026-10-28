@@ -1,0 +1,20 @@
+[Unit]
+Description=UL bounded storage maintenance after verified NAS backup
+After=network-online.target
+RequiresMountsFor=/mnt/nas
+
+[Service]
+Type=oneshot
+WorkingDirectory=/opt/ul-workbench/service
+ExecStart=/usr/bin/flock --conflict-exit-code=0 -n /opt/ul-workbench/service/runtime/data/.web-browser-lane.lock /opt/ul-sales-runner/venv/bin/python tools/storage_maintenance.py --runtime /opt/ul-workbench/service/runtime/data --nas /mnt/nas --apply
+Nice=15
+IOSchedulingClass=idle
+CPUQuota=40%
+MemoryMax=256M
+TimeoutStartSec=900
+UMask=0077
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=strict
+ReadWritePaths=/opt/ul-workbench/service/runtime/data /mnt/nas/开发项目/UL随行
+

@@ -1,0 +1,14 @@
+[Unit]
+Description=Run the isolated purchase export trial three times daily
+
+[Timer]
+OnCalendar=*-*-* 07:40:00 Asia/Shanghai
+OnCalendar=*-*-* 11:40:00 Asia/Shanghai
+OnCalendar=*-*-* 16:10:00 Asia/Shanghai
+Unit=ul-purchase-trial.service
+Persistent=false
+AccuracySec=30s
+RandomizedDelaySec=0
+
+[Install]
+WantedBy=timers.target
