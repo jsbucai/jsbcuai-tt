@@ -212,6 +212,45 @@ def history_preview(db, idents):
     return preview
 
 
+def _job_result(job):
+    result = job.get('result') if isinstance(job, dict) else None
+    return result if isinstance(result, dict) else {}
+
+
+def refresh_published(job):
+    """True when the update job already published the ERP read."""
+    result = _job_result(job)
+    return result.get('published') is True or result.get('query_status') == 'published'
+
+
+def refresh_outcome(job):
+    """Settle a purchase refresh from the update job.
+
+    ``unknown`` after a published read is still a successful order refresh:
+    the uncertain row is a logistics check, not a failed publication.
+    A complete stage with published data is the same. Only an unpublished
+    or genuinely failed job fails the refresh.
+    """
+    if not isinstance(job, dict):
+        return 'failed'
+    status = text(job.get('status'))
+    if status in {'queued', 'running'}:
+        return ''
+    published = refresh_published(job)
+    if status == 'succeeded' or (status == 'unknown' and published) or (text(job.get('stage')) == 'complete' and published):
+        return 'succeeded'
+    return 'failed'
+
+
+def refresh_notice(job):
+    if refresh_outcome(job) != 'succeeded':
+        return ''
+    result = _job_result(job)
+    if text(job.get('status')) != 'succeeded' or result.get('unknown'):
+        return '部分核对待确认'
+    return ''
+
+
 def authorize(user):
     if not isinstance(user, dict) or not (_is_admin(user) or 'purchase' in _roles(user)):
         raise PurchaseConflict('需要采购岗位或管理员权限', 'purchase_role_required', 403)
@@ -383,7 +422,14 @@ class PurchaseWorkspace:
             preview = history_preview(db, [x['id'] for x in page_items])
             output = []
             cached_board = read_customer_cache(db, token)
-            board = cached_board['rows'] if cached_board else customer_board(items)
+            # A missing or empty cache is recomputed from the current index.
+            # Never serve a blank board just because refresh cleared the cache.
+            if cached_board and cached_board.get('rows'):
+                board = cached_board['rows']
+                cache_state = 'hit'
+            else:
+                board = customer_board(items)
+                cache_state = 'miss'
             for x in page_items:
                 slim = {k: v for k, v in x.items() if k not in {'demands', 'customers'}}
                 slim['history_preview'] = preview.get(x['id'], [])
@@ -392,15 +438,16 @@ class PurchaseWorkspace:
                     slim.update(customer_need(x, customer))
                 output.append(slim)
             payload = {'items': output, 'total': total, 'page': page, 'page_size': size,
-                'customer_board': board, 'customer_cache': 'hit' if cached_board else 'miss',
+                'customer_board': board, 'customer_cache': cache_state,
                 'source_token': token, 'source_current': current, 'source_updated_at': setting(db, 'data_source_updated_at'),
                 'counts': counts, 'facets': facets, 'suppliers': [{**s, **{
                     **summaries[s['id']], 'quantity': number(summaries[s['id']]['quantity'])}} for s in self.suppliers(db)],
                 'refresh': self.refresh_status(db),
                 'history_coverage': json.loads(db.execute("SELECT value FROM purchase_workspace_meta WHERE key='history_coverage'").fetchone()[0])}
-        if not cached_board:
+        if cache_state == 'miss':
             with self.store.connect(write=True) as db:
-                if not read_customer_cache(db, token):
+                current_cache = read_customer_cache(db, token)
+                if not current_cache or current_cache.get('rows') != board:
                     write_customer_cache(db, token, board, '*')
         return payload
 
@@ -694,7 +741,15 @@ class PurchaseWorkspace:
     @staticmethod
     def refresh_status(db):
         row = db.execute('SELECT * FROM purchase_workspace_refresh ORDER BY rowid DESC LIMIT 1').fetchone()
-        return dict(row) if row else None
+        if not row:
+            return None
+        item = dict(row)
+        try:
+            parsed = json.loads(item.get('result') or '{}')
+        except (TypeError, json.JSONDecodeError):
+            parsed = {}
+        item['result'] = parsed if isinstance(parsed, dict) else {}
+        return item
 
     def request_refresh(self, user, body):
         authorize(user)
@@ -799,10 +854,11 @@ class PurchaseWorkspace:
         for item in waiting:
             if item['status'] == 'running':
                 job = updates.get(item['job_id'])
-                if job['status'] in {'queued', 'running'}:
+                outcome = refresh_outcome(job)
+                if not outcome:
                     continue
                 current = False
-                if job['status'] == 'succeeded':
+                if outcome == 'succeeded':
                     result=self.rebuild()
                     with self.store.connect() as db:
                         _,current=self._source(db)
@@ -810,9 +866,27 @@ class PurchaseWorkspace:
                         continue
                     if current:
                         self._remember_watermark()
+                job_result = _job_result(job)
+                payload = {'job_status': job.get('status'), 'stage': job.get('stage')}
+                if 'published' in job_result:
+                    payload['published'] = job_result.get('published') is True
+                if job_result.get('query_status'):
+                    payload['query_status'] = job_result.get('query_status')
+                if job_result.get('unknown') is not None:
+                    payload['unknown'] = job_result.get('unknown')
+                if job_result.get('logistics_status'):
+                    payload['logistics_status'] = job_result.get('logistics_status')
+                if outcome == 'succeeded' and current:
+                    notice = refresh_notice(job)
+                    if notice:
+                        payload['notice'] = notice
+                    status = 'succeeded'
+                else:
+                    status = 'failed'
+                    payload['message'] = text(job_result.get('message')) or '订单刷新没有完成，已保留上一次的客户卡片。'
                 with self.store.connect(write=True) as db:
                     db.execute('UPDATE purchase_workspace_refresh SET status=?,result=?,updated_at=? WHERE id=?',
-                               ('succeeded' if job['status'] == 'succeeded' and current else 'failed', dumps({'job_status': job['status']}), timestamp(), item['id']))
+                               (status, dumps(payload), timestamp(), item['id']))
             else:
                 with self.store.connect() as db:
                     active = db.execute("SELECT 1 FROM update_jobs WHERE status IN ('queued','running')").fetchone()
