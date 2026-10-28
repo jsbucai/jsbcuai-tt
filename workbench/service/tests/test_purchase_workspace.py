@@ -329,9 +329,9 @@ def test_customer_open_need_recent_supplier_and_price(store):
 def test_rework_card_note_auto_numbers_and_cache(store, monkeypatch):
     from datetime import datetime
     from zoneinfo import ZoneInfo
-    from core import purchase_orders
+    from core import purchase_workspace
     fixed = datetime(2026, 10, 28, 9, 0, tzinfo=ZoneInfo('Asia/Shanghai'))
-    monkeypatch.setattr(purchase_orders, 'shanghai_now', lambda: fixed)
+    monkeypatch.setattr(purchase_workspace, 'shanghai_now', lambda: fixed)
     bolt = inventory(available='-20')
     nut = inventory('B', available='-8')
     nut['product_name'] = 'GB/T 6170 螺母'
