@@ -12,6 +12,7 @@ READ_METHODS = frozenset({'erp.stock.list', 'erp.ptype.list', 'erp.goodsstocks.l
     'erp.freight.list', 'erp.ewms.stockoutbill.list', 'erp.ewms.stockoutbill.query',
     'erp.bill.billcenterlist', 'qimen.taobao.erp.order.sync'})
 LOGISTICS_METHOD = 'beefun.orderfreight.updatefreight'
+PURCHASE_ORDER_ADD_METHOD = 'erp.purchaseorder.add'
 
 
 class ErpUnavailable(Exception):
@@ -21,9 +22,10 @@ class ErpUnavailable(Exception):
 
 
 class ErpClient:
-    def __init__(self, vault, transport=post, allow_logistics=False):
+    def __init__(self, vault, transport=post, allow_logistics=False, allow_purchase_order=False):
         self.vault = Path(vault)
         self.transport, self.allow_logistics = transport, allow_logistics
+        self.allow_purchase_order = allow_purchase_order
         self.lock = threading.RLock()
         self.stop_event = threading.Event()
         self.last_auth_error = None
@@ -79,8 +81,16 @@ class ErpClient:
         with self.lock:
             return str(self._ready()['token']['profileid'])
 
+    def identity(self):
+        """Account pin for purchase drafts. Does not return tokens or secrets."""
+        with self.lock:
+            token = self._ready()['token']
+            employee = token.get('employee_id', token.get('employeeid', ''))
+            return {'profile_id': str(token.get('profileid') or ''), 'employee_id': str(employee or '').strip()}
+
     def call(self, method, params):
-        if method not in READ_METHODS and not (method == LOGISTICS_METHOD and self.allow_logistics):
+        purchase_write = method == PURCHASE_ORDER_ADD_METHOD and self.allow_purchase_order
+        if method not in READ_METHODS and not (method == LOGISTICS_METHOD and self.allow_logistics) and not purchase_write:
             raise ErpUnavailable('此 ERP 方法未启用或未完成接入验收')
         if {'appkey','token','method','timestamp','sign'} & params.keys():
             raise ValueError('业务参数不能覆盖公共参数')

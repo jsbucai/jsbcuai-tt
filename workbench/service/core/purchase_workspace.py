@@ -248,13 +248,18 @@ class PurchaseWorkspace:
         """Draft ERP submit stays off unless both env flags and a verified adapter are present."""
         enabled = self.submission._writing_allowed()
         ready = bool(enabled and self.submission.ready())
-        if ready:
+        cap = getattr(self.submission.adapter, 'capabilities', None)
+        readback = bool(getattr(cap, 'readback_contract_verified', False) and getattr(cap, 'complete_unique_lookup', False))
+        if ready and not readback:
+            message = '进货订单写入已开放。只调用 erp.purchaseorder.add，不付款、不审核。官方没有草稿字段，也没有按单号回查。写入后请到管家婆按单据编号人工核对未审核。'
+        elif ready:
             message = '采购订单草稿试写已开放。只创建未审核草稿，不付款、不审核；结果不明时只回查。'
         elif enabled:
             message = '采购 ERP 草稿开关已打开，但写入和回查合同尚未验收，不会向 ERP 发送。'
         else:
             message = '采购 API 合同验收前，实际成交记录可保存，ERP 提交暂未开放'
-        return {'erp_submit_enabled': enabled, 'erp_draft_ready': ready, 'browser_enabled': False, 'message': message}
+        return {'erp_submit_enabled': enabled, 'erp_draft_ready': ready, 'erp_readback_available': readback,
+                'browser_enabled': False, 'message': message}
 
     def submit_erp_draft(self, user, body):
         authorize(user)

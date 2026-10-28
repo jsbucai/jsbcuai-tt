@@ -146,9 +146,12 @@ def create_app(config=None, runtime_dir=None):
     updates = erp_client = history_archive = history_jobs = None
     if api_mode:
         write_enabled = app.config.get('LOGISTICS_WRITE_ENABLED') is True
+        from core.purchase_submission import policy_from_environ
+        purchase_policy = policy_from_environ()
         erp_client = app.config.get('ERP_CLIENT') or ErpClient(
             app.config.get('ERP_VAULT', str(store.runtime / 'secrets' / 'erp.json')),
-            allow_logistics=write_enabled)
+            allow_logistics=write_enabled,
+            allow_purchase_order=purchase_policy.enabled is True and purchase_policy.allow_submit is True)
         freight_sender = app.config.get('LOGISTICS_SENDER')
         if freight_sender is None and write_enabled:
             freight_sender = erp_client.update_logistics
@@ -176,6 +179,9 @@ def create_app(config=None, runtime_dir=None):
         app.extensions['service'].update(updates=updates, erp_client=erp_client,
             sessions=sessions, order_history_archive=history_archive,
             order_history_jobs=history_jobs)
+        if purchase_workspace is not None:
+            from core.purchase_erp_adapter import attach_purchase_adapter
+            attach_purchase_adapter(purchase_workspace.submission, erp_client)
         if purchase_workspace and not app.testing:
             purchase_workspace.start(updates)
         if daily_work:

@@ -1,12 +1,11 @@
 """Opt-in ERP purchase-order draft submission. Default off. No live adapter.
 
 Official method ``erp.purchaseorder.add`` (提交进货订单,
-http://d7safe.mygjp.com.cn:8020/web/#/erpapi/317) is named in the 2026-09-16
-read-only audit and has never been called. This repo has no accepted readback
-for an unapproved purchase order: ``beefun.gjsstockbilldetail.list`` is posted
-receipts, and ``ErpClient.call`` refuses methods outside the read allow-list.
-A verified adapter must be injected by a test or a future accepted contract.
-Env flags alone do not open a network write.
+http://d7safe.mygjp.com.cn:8020/web/#/erpapi/317) has no audit/draft field and
+returns only ``vchcode``. The erpapi menu has no purchase-order read method.
+``PurchaseOrderDraftAdapter`` may write once when both env flags and the
+account pin match; success means the write receipt arrived, and a person must
+check 进货订单管理. Env flags alone still do not open a network write.
 
 ``inspect`` / ``lookup`` are read-only. ``submit_once`` is one write with no
 internal retry. An intent is committed before that call. Any existing intent
@@ -52,6 +51,8 @@ MESSAGES = {
     'purchase_submission_idempotency_conflict': '原操作标识不能用于另一批内容。',
     'purchase_submission_busy': '这一笔采购草稿正在处理，请稍后回查，不要重复提交。',
     'purchase_readback_not_found': '已记下提交意图，但还没有查到对应的 ERP 草稿。请回查，不要重复提交。',
+    'purchase_write_receipt_pending_human_check': '已写入进货订单。官方接口只返回单据ID，没有审核字段，也没有按单号回查。请到管家婆进货订单管理核对未审核、未付款、未入库。核对前不要重复提交。',
+    'purchase_write_rejected': '管家婆没有返回有效单据ID。请按预定单据编号在进货订单管理核对是否已经生成，不要重复提交。',
     'purchase_readback_incomplete': 'ERP 回查不完整，不能确认单据。请回查，不要重复提交。',
     'purchase_readback_ambiguous': '回查到多张单据，不能确认是哪一张。请人工核对，不要重复提交。',
     'purchase_readback_mismatch': '回查结果与冻结的采购行不一致。请人工核对，不要重复提交。',
@@ -103,6 +104,7 @@ class PurchaseAdapterCapabilities:
     creates_unapproved_draft: bool = False
     allows_payment: bool = False
     allows_audit: bool = False
+    acceptance_basis: str = 'erp_readback'
 
 
 @dataclass(frozen=True)
@@ -120,6 +122,7 @@ class PurchaseDraftLine:
     amount: str
     tax_basis: str
     note: str
+    delivery_date: str = ''
 
 
 @dataclass(frozen=True)
@@ -175,6 +178,8 @@ class ErpPurchaseDraft:
     line: PurchaseDraftLine
     observed_at: float
     evidence_hash: str
+    evidence_basis: str = 'erp_readback'
+    vchcode: str = ''
 
 
 @dataclass(frozen=True)
@@ -329,12 +334,20 @@ class PurchaseSubmission:
         if (not self.policy.profile_id or not self.policy.account_id or cap.profile_id != self.policy.profile_id
                 or cap.account_id != self.policy.account_id or cap.account_verified is not True):
             raise PurchaseSubmissionBlocked('purchase_erp_account_unverified')
-        if (not cap.official_contract_reference or not _valid_hash(cap.official_contract_hash)
-                or cap.readback_contract_verified is not True or cap.complete_unique_lookup is not True
-                or cap.durable_document_binding is not True or cap.durable_line_binding is not True):
+        readback = (bool(cap.official_contract_reference) and _valid_hash(cap.official_contract_hash)
+                    and cap.readback_contract_verified is True and cap.complete_unique_lookup is True
+                    and cap.durable_document_binding is True and cap.durable_line_binding is True)
+        receipt = (cap.acceptance_basis == 'write_receipt_human_check' and bool(cap.official_contract_reference)
+                   and _valid_hash(cap.official_contract_hash) and cap.write_contract_verified is True
+                   and cap.readback_contract_verified is False and cap.complete_unique_lookup is False
+                   and cap.creates_unapproved_draft is False and cap.durable_document_binding is False
+                   and cap.durable_line_binding is False)
+        if not readback and not receipt:
             raise PurchaseSubmissionBlocked('purchase_readback_contract_unverified')
-        if writing and (cap.write_contract_verified is not True or cap.creates_unapproved_draft is not True
-                        or self.policy.audit_status != 'unapproved'):
+        if writing and readback and (cap.write_contract_verified is not True or cap.creates_unapproved_draft is not True
+                                     or self.policy.audit_status != 'unapproved'):
+            raise PurchaseSubmissionBlocked('purchase_write_contract_unverified')
+        if writing and receipt and self.policy.audit_status != 'unapproved':
             raise PurchaseSubmissionBlocked('purchase_write_contract_unverified')
         return cap
 
@@ -373,7 +386,7 @@ class PurchaseSubmission:
             line_no, allocation_id, order_no, line_no, alloc['supplier_id'], text(supplier['erp_id']),
             text(item.get('sku')), identity, _number_text(alloc['quantity'], True),
             _number_text(details.get('unit_price')), _number_text(details.get('amount')), tax,
-            text(details.get('note'))[:500])
+            text(details.get('note'))[:500], text(details.get('delivery_date'))[:10])
         return row, supplier, line
 
     def _request(self, attempt, actor, supplier, line, version, item_id):
@@ -393,7 +406,10 @@ class PurchaseSubmission:
         expected = (request.profile_id, request.account_id, request.external_reference, request.supplier_erp_id, request.audit_status)
         if (prepared.profile_id, prepared.account_id, prepared.external_reference, prepared.supplier_erp_id, prepared.audit_status) != expected:
             raise PurchaseSubmissionBlocked('purchase_inspection_unverified')
-        if prepared.audit_status != 'unapproved' or prepared.audit_status_verified is not True or prepared.contract_hash != cap.official_contract_hash:
+        verified = prepared.audit_status_verified is True
+        if cap.acceptance_basis == 'write_receipt_human_check':
+            verified = prepared.audit_status_verified is False
+        if prepared.audit_status != 'unapproved' or not verified or prepared.contract_hash != cap.official_contract_hash:
             raise PurchaseSubmissionBlocked('purchase_inspection_unverified')
         if not _valid_hash(prepared.line_evidence_hash) or not _valid_hash(prepared.evidence_hash) or prepared.line != request.line:
             raise PurchaseSubmissionBlocked('purchase_inspection_unverified')
@@ -402,6 +418,8 @@ class PurchaseSubmission:
         cap = self._capabilities(writing=False)
         if (intent.request.profile_id, intent.request.account_id) != (cap.profile_id, cap.account_id):
             raise PurchaseSubmissionBlocked('purchase_recovery_account_changed')
+        if cap.acceptance_basis == 'write_receipt_human_check':
+            return None
         result = self.adapter.lookup(intent)
         if (not isinstance(result, PurchaseDraftLookup) or result.complete is not True
                 or (result.profile_id, result.account_id, result.external_reference) != (cap.profile_id, cap.account_id, intent.request.external_reference)):
@@ -411,7 +429,7 @@ class PurchaseSubmission:
         if not result.drafts:
             return None
         draft = result.drafts[0]
-        if not isinstance(draft, ErpPurchaseDraft):
+        if not isinstance(draft, ErpPurchaseDraft) or draft.evidence_basis != 'erp_readback':
             raise PurchaseSubmissionBlocked('purchase_readback_incomplete')
         self._fresh(draft.observed_at)
         if draft.paid is not False or draft.audit_status != 'unapproved':
@@ -439,7 +457,7 @@ class PurchaseSubmission:
 
     def _set(self, db, attempt, actor, status, detail='', receipt=None):
         latest = db.execute('SELECT status FROM purchase_submission_attempts WHERE id=?', (attempt['id'],)).fetchone()
-        if latest and latest['status'] == 'submitted':
+        if latest and latest['status'] in {'submitted', 'awaiting_human_check'}:
             return
         db.execute('''UPDATE purchase_submission_attempts SET status=?,detail=?,updated_at=?,
             erp_order_no=CASE WHEN ? IS NULL THEN erp_order_no ELSE ? END,
@@ -477,6 +495,12 @@ class PurchaseSubmission:
                 'erp_draft_no': receipt.erp_order_no, 'erp_draft_line_no': receipt.erp_line_no,
                 'erp_draft_status': 'unapproved', 'erp_submit_status': 'submitted', 'erp_submit_detail': '',
                 'erp_submit_external_reference': attempt['external_reference'], 'erp_submit_attempt_id': attempt['id']}
+        elif status == 'awaiting_human_check' and receipt is not None:
+            updated = {
+                'erp_draft_no': receipt.erp_order_no, 'erp_draft_line_no': receipt.erp_line_no,
+                'erp_draft_status': 'pending_human_check', 'erp_submit_status': 'awaiting_human_check',
+                'erp_submit_detail': 'purchase_write_receipt_pending_human_check',
+                'erp_submit_external_reference': attempt['external_reference'], 'erp_submit_attempt_id': attempt['id']}
         elif status == 'submission_unknown':
             updated = {
                 'erp_submit_status': 'submission_unknown', 'erp_submit_detail': detail,
@@ -499,8 +523,21 @@ class PurchaseSubmission:
             row = db.execute('SELECT * FROM purchase_submission_attempts WHERE id=?', (attempt_id,)).fetchone()
         if row['status'] == 'submitted' and row['erp_order_no']:
             message = f"已回查到未审核采购草稿 {row['erp_order_no']} / {row['erp_line_no']}。未付款、未审核，本地预留未释放。"
+        elif row['status'] == 'awaiting_human_check' and row['erp_order_no']:
+            message = (f"已写入进货订单 {row['erp_order_no']}（单据ID {row['erp_line_no']}）。"
+                       '官方接口没有审核字段，也没有按单号回查。请到管家婆进货订单管理核对此单未审核、未付款、未入库。'
+                       '核对前不要重复提交。')
         elif row['status'] == 'submission_unknown':
             message = MESSAGES.get(row['detail'], MESSAGES['purchase_readback_not_found'])
+            cap = getattr(self.adapter, 'capabilities', None)
+            if getattr(cap, 'acceptance_basis', '') == 'write_receipt_human_check':
+                from .purchase_erp_adapter import document_number
+                try:
+                    number = document_number(row['external_reference'])
+                except ValueError:
+                    number = ''
+                if number:
+                    message += f' 预定单据编号 {number}。请按这个编号在进货订单管理核对是否已经生成，不要重复提交。'
         elif row['status'] == 'blocked':
             message = MESSAGES.get(row['detail'], '未向 ERP 发送。')
         elif row['status'] == 'intent_recorded':
@@ -528,8 +565,18 @@ class PurchaseSubmission:
     def _recover(self, attempt, actor):
         intent = self._load_intent(attempt)
         try:
-            receipt = self._lookup(intent)
-            status, detail = ('submitted', '') if receipt else ('submission_unknown', 'purchase_readback_not_found')
+            cap = self._capabilities(writing=False)
+            if cap.acceptance_basis == 'write_receipt_human_check':
+                outcome = self.adapter.write_outcome(intent)
+                if outcome is not None and outcome.accepted and outcome.draft is not None:
+                    receipt, status, detail = outcome.draft, 'awaiting_human_check', outcome.detail
+                elif outcome is not None and outcome.detail:
+                    receipt, status, detail = None, 'submission_unknown', outcome.detail
+                else:
+                    receipt, status, detail = None, 'submission_unknown', 'purchase_readback_not_found'
+            else:
+                receipt = self._lookup(intent)
+                status, detail = ('submitted', '') if receipt else ('submission_unknown', 'purchase_readback_not_found')
         except PurchaseSubmissionBlocked as error:
             receipt, status, detail = None, 'submission_unknown', error.code
         except Exception:
@@ -580,7 +627,7 @@ class PurchaseSubmission:
                         attempt = dict(existing)
                     db.execute('INSERT INTO purchase_submission_operations VALUES (?,?,?,?)', (actor, key, fingerprint, attempt['id']))
                 intent = db.execute('SELECT 1 FROM purchase_submission_intents WHERE attempt_id=?', (attempt['id'],)).fetchone()
-            if attempt['status'] == 'submitted':
+            if attempt['status'] in {'submitted', 'awaiting_human_check'}:
                 return self._result(attempt['id'], replayed)
             if intent:
                 self._recover(attempt, actor)
