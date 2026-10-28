@@ -366,3 +366,52 @@ def test_dawn_full_reconcile_is_off_until_enabled(store):
     job = jobs.enqueue_purchase_dawn(enabled=True, now=now)
     assert job['mode'] == 'reconcile' and job['result']['schedule'] == 'purchase-dawn'
     assert jobs.enqueue_purchase_dawn(enabled=True, now=now)['id'] == job['id']
+
+
+def _sale_fact(order_no, line_id, quantity, amount):
+    return ('1', 'P', order_no, line_id, 'identity', 'A', quantity, amount, '支', 'tax_inclusive',
+            'wms_total_25matched_sales_rows_v1', '1', 'DOC'+order_no, 'LINE'+line_id, 'a'*64,
+            '2026-10-21T13:15:00+08:00', 'user_confirmed_base_unit_1_zhi_2026_10_07')
+
+
+def test_customer_lines_show_sales_order_price_without_changing_shortage(store):
+    from core.purchase_price_bounds import ensure_fact_schema
+    bolt = inventory(available='-20')
+    plain = inventory('B', available='-6')
+    plain['product_name'] = 'GB/T 6170 螺母'
+    rework = inventory('C', available='-3')
+    rework['product_name'] = '非标销轴'
+    second = {**_order(bolt, '客户甲', '4', 'SO2', '2026-10-18'), 'line_id': '2', 'order_date': '2026-10-18'}
+    orders = [
+        {**_order(bolt, '客户甲', '8', 'SO1', '2026-10-20'), 'order_date': '2026-10-20'},
+        second,
+        _order(plain, '客户甲', '6', 'SO3', '2026-10-21'),
+        {**_order(rework, '客户甲', '3', 'SO4', '2026-10-22'), 'summary': '改制#交期=2026-10-22', 'line_id': '9'},
+    ]
+    seed(store, [bolt, plain, rework], [receipt(bolt, 'S', '2026-10-01')], orders=orders)
+    with store.connect(write=True) as db:
+        ensure_fact_schema(db)
+        db.executemany('INSERT INTO wms_sale_price_facts VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)', [
+            _sale_fact('SO1', '1', '8', '16'),
+            _sale_fact('SO2', '2', '4', '12'),
+            _sale_fact('SO4', '9', '3', '9'),
+        ])
+    engine = PurchaseWorkspace(store)
+    listed = engine.listing(ACTOR, {'customer': '客户甲'})
+    rows = {row['sku']: row for row in listed['items']}
+    assert rows['A']['shortage'] == '20' and rows['B']['shortage'] == '6'
+    prices = rows['A']['sale_prices']
+    assert prices['status'] == 'ok' and prices['min'] == '2' and prices['max'] == '3'
+    assert prices['tax_basis'] == '含税' and prices['unit'] == '支'
+    assert prices['latest_order_no'] == 'SO1'
+    assert {line['order_no'] for line in prices['lines']} == {'SO1', 'SO2'}
+    assert rows['B']['sale_prices']['status'] == 'missing'
+    assert 'C' not in rows
+    rework_row = engine.listing(ACTOR, {'customer': '改制'})['items'][0]
+    assert rework_row['sku'] == 'C' and rework_row['sale_prices']['latest'] == '3'
+    assert rework_row['sale_prices']['lines'][0]['order_no'] == 'SO4'
+    detail = engine.detail(ACTOR, rows['A']['id'])
+    by_order = {line['order_no']: line for line in detail['demands']}
+    assert by_order['SO1']['sale_unit_price'] == '2' and by_order['SO1']['sale_tax_basis'] == '含税'
+    assert by_order['SO1']['sale_unit'] == '支' and by_order['SO2']['sale_unit_price'] == '3'
+    assert detail['shortage'] == '20'

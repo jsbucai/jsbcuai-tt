@@ -165,7 +165,32 @@ def customer_need(item, customer):
             orders.append(order_no)
     quantity = sum((decimal(line.get('quantity') or 0) for line in lines), Decimal(0))
     return {'customer_demand': number(quantity), 'customer_due': dues[0] if dues else '',
-            'customer_orders': orders[:8], 'customer_line_count': len(lines)}
+            'customer_orders': orders[:8], 'customer_line_count': len(lines),
+            'sale_prices': sale_price_summary(lines)}
+
+
+def sale_price_summary(lines):
+    """Reference prices for the lines on this customer or 改制 card. Shortage is untouched."""
+    priced = []
+    for line in lines:
+        price = text(line.get('sale_unit_price'))
+        row = {'order_no': text(line.get('order_no')), 'line_id': text(line.get('line_id')),
+               'order_date': text(line.get('order_date')), 'quantity': text(line.get('quantity')),
+               'unit_price': price, 'tax_basis': text(line.get('sale_tax_basis')),
+               'unit': text(line.get('sale_unit')) or '支'}
+        if price:
+            priced.append(row)
+    if not priced:
+        return {'status': 'missing', 'lines': [], 'priced_count': 0, 'line_count': len(lines), 'missing_count': len(lines)}
+    priced.sort(key=lambda row: (row['order_date'], row['order_no'], row['line_id']), reverse=True)
+    values = [decimal(row['unit_price']) for row in priced]
+    bases = sorted({row['tax_basis'] or '税价待核对' for row in priced})
+    units = sorted({row['unit'] or '支' for row in priced})
+    return {'status': 'ok', 'lines': priced, 'priced_count': len(priced), 'line_count': len(lines),
+            'missing_count': len(lines) - len(priced), 'min': number(min(values)), 'max': number(max(values)),
+            'latest': priced[0]['unit_price'], 'latest_order_no': priced[0]['order_no'],
+            'tax_basis': bases[0] if len(bases) == 1 else '多口径',
+            'unit': units[0] if len(units) == 1 else ''}
 
 
 def history_preview(db, idents):
