@@ -110,6 +110,85 @@ def test_refresh_waits_for_old_read_and_only_uses_refresh(store):
         assert db.execute('SELECT mode FROM update_jobs WHERE id=?',(r['job_id'],)).fetchone()[0]=='refresh'
 
 
+def _open_customers(store):
+    bolt = inventory(available='-20')
+    nut = inventory('B', available='-6')
+    rework = inventory('C', available='-3')
+    rework['product_name'] = '非标销轴'
+    orders = [
+        _order(bolt, '客户甲', '8', 'SO1', '2026-10-20'),
+        _order(nut, '客户乙', '6', 'SO2', '2026-10-21'),
+        {**_order(rework, '客户甲', '3', 'SO3', '2026-10-22'), 'summary': '改制'},
+    ]
+    seed(store, [bolt, nut, rework], orders=orders)
+    return PurchaseWorkspace(store)
+
+
+def _settle_refresh(store, engine, status, stage, result):
+    from core.update_jobs import UpdateJobs
+    jobs = UpdateJobs(store, object())
+    engine.request_refresh(ACTOR, {'idempotency_key': str(uuid.uuid4())})
+    engine.tick_refresh(jobs)
+    with store.connect() as db:
+        running = engine.refresh_status(db)
+        assert running['status'] == 'running'
+        job_id = running['job_id']
+    with store.connect(write=True) as db:
+        db.execute('UPDATE update_jobs SET status=?,stage=?,result=? WHERE id=?',
+                   (status, stage, dumps(result), job_id))
+    engine.tick_refresh(jobs)
+    return engine.listing(ACTOR, {})
+
+
+@pytest.mark.parametrize('status,stage,result,expect,notice', [
+    ('unknown', 'complete', {'published': True, 'query_status': 'published', 'unknown': 1, 'logistics_status': 'preview'}, 'succeeded', True),
+    ('unknown', 'interrupted', {'published': True, 'query_status': 'published', 'unknown': 1, 'logistics_status': 'preview'}, 'succeeded', True),
+    ('partial', 'complete', {'published': True, 'query_status': 'published', 'unknown': 0, 'logistics_status': 'preview'}, 'succeeded', True),
+    ('succeeded', 'complete', {'published': True, 'query_status': 'published', 'unknown': 0, 'logistics_status': 'preview'}, 'succeeded', False),
+    ('unknown', 'error', {'published': False, 'query_status': 'failed', 'unknown': 1}, 'failed', False),
+    ('failed', 'error', {'published': False, 'query_status': 'failed', 'message': '读取失败'}, 'failed', False),
+])
+def test_published_unknown_refresh_is_success_and_keeps_board(store, status, stage, result, expect, notice):
+    engine = _open_customers(store)
+    listed = _settle_refresh(store, engine, status, stage, result)
+    refresh = listed['refresh']
+    assert refresh['status'] == expect
+    assert bool(refresh['result'].get('notice')) is notice
+    if notice:
+        assert refresh['result']['notice'] == '部分核对待确认'
+    if expect == 'failed':
+        assert refresh['result']['message']
+        assert '客户卡片' in refresh['result']['message'] or result.get('message') in refresh['result']['message']
+    names = {row['name'] for row in listed['customer_board']}
+    assert {'客户甲', '客户乙', '改制'} <= names
+    assert listed['customer_cache'] == 'miss'
+    with store.connect() as db:
+        mark = db.execute("SELECT 1 FROM purchase_workspace_meta WHERE key='erp_refresh_watermark'").fetchone()
+    assert bool(mark) is (expect == 'succeeded')
+
+
+def test_failed_refresh_recomputes_board_when_cache_is_missing(store):
+    engine = _open_customers(store)
+    listed = _settle_refresh(store, engine, 'failed', 'error', {'published': False, 'query_status': 'failed'})
+    assert listed['refresh']['status'] == 'failed' and listed['customer_board']
+    with store.connect(write=True) as db:
+        db.execute("DELETE FROM purchase_workspace_meta WHERE key='customer_board_cache'")
+        row = db.execute("SELECT value FROM purchase_workspace_meta WHERE key='customer_board_cache'").fetchone()
+    assert row is None
+    again = engine.listing(ACTOR, {})
+    assert again['customer_cache'] == 'miss'
+    assert {row['name'] for row in again['customer_board']} >= {'客户甲', '客户乙', '改制'}
+    assert again['refresh']['status'] == 'failed'
+    # A cached empty board must not stick after the index still has open demand.
+    with store.connect(write=True) as db:
+        cached = json.loads(db.execute("SELECT value FROM purchase_workspace_meta WHERE key='customer_board_cache'").fetchone()[0])
+        cached['rows'] = []
+        db.execute("UPDATE purchase_workspace_meta SET value=? WHERE key='customer_board_cache'", (dumps(cached),))
+    repaired = engine.listing(ACTOR, {})
+    assert repaired['customer_cache'] == 'miss'
+    assert {row['name'] for row in repaired['customer_board']} >= {'客户甲', '改制'}
+
+
 def test_quote_preview_exact_match_and_atomic_apply(store):
     from core.purchase_workspace_files import quote_template,preview_quotes,apply_quotes
     from openpyxl import load_workbook
