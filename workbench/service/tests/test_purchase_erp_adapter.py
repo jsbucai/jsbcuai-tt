@@ -72,6 +72,8 @@ def test_workspace_tax_basis_becomes_untaxed_unit_and_thirteen_percent():
     assert (unit, gross, tax) == (Decimal('2.212'), Decimal('49.99'), Decimal('13'))
     unit, gross, tax = erp_line_prices('20', '2.5', '未税')
     assert (unit, gross, tax) == (Decimal('2.500'), Decimal('56.50'), Decimal('13'))
+    unit, gross, tax = erp_line_prices('22', '2.771', '含税')
+    assert unit == Decimal('2.452') and unit.as_tuple().exponent == -3 and tax == Decimal('13')
 
 
 def _vault(tmp_path):

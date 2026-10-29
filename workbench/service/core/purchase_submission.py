@@ -24,7 +24,7 @@ import uuid
 from contextlib import contextmanager
 from dataclasses import asdict, dataclass
 from datetime import datetime, timezone
-from decimal import Decimal, InvalidOperation
+from decimal import Decimal, InvalidOperation, ROUND_HALF_UP
 from time import time
 from typing import Protocol
 
@@ -235,6 +235,38 @@ def _number_text(value, positive=False):
     return format(_number(value, positive).normalize(), 'f')
 
 
+# Deal unit prices are kept to 3 decimal places, e.g. 60.97 / 22 支 → 2.771.
+_PRICE_STEP = Decimal('0.001')
+
+
+def price_amount_gap(quantity):
+    """How far a 3-decimal unit price may sit from the real line amount.
+
+    Half of the last kept digit, times the quantity. At least one cent, so a
+    short line stays as strict as before. 2.771 × 22 = 60.962, eight thousandths
+    away from the deal amount 60.97.
+    """
+    qty = _number(quantity, True)
+    return max(Decimal('0.01'), Decimal('0.0005') * qty)
+
+
+def saved_deal(quantity, amount, unit_price):
+    """Use the saved quantity and the real deal amount. Round only the unit price.
+
+    The confirm dialog does not send quantity or amount again. 60.97 / 22
+    repeats for 27 places; older rows still store that full string. The amount
+    stays 60.97. It is not replaced by the rounded price times the quantity.
+    The stored ``unit_price`` is not reused; three decimals are taken from the amount.
+    """
+    del unit_price
+    qty = _number(quantity, True)
+    money = _number(amount)
+    price = (money / qty).quantize(_PRICE_STEP, rounding=ROUND_HALF_UP)
+    if abs(price * qty - money) > price_amount_gap(qty):
+        raise PurchaseSubmissionBlocked('purchase_number_invalid', 400)
+    return _number_text(qty, True), _number_text(price), _number_text(money)
+
+
 def _restore(value):
     request = dict(value['request'])
     request['line'] = PurchaseDraftLine(**request['line'])
@@ -382,10 +414,10 @@ class PurchaseSubmission:
         identity = '|'.join(text(item.get(key)) for key in ('profile_id', 'warehouse_id', 'product_id', 'sku_id', 'base_unit'))
         if not all(identity.split('|')) or not text(item.get('sku')):
             raise PurchaseSubmissionBlocked('purchase_product_unavailable')
+        quantity, price, money = saved_deal(alloc['quantity'], details.get('amount'), details.get('unit_price'))
         line = PurchaseDraftLine(
             line_no, allocation_id, order_no, line_no, alloc['supplier_id'], text(supplier['erp_id']),
-            text(item.get('sku')), identity, _number_text(alloc['quantity'], True),
-            _number_text(details.get('unit_price')), _number_text(details.get('amount')), tax,
+            text(item.get('sku')), identity, quantity, price, money, tax,
             text(details.get('note'))[:500], text(details.get('delivery_date'))[:10])
         return row, supplier, line
 
