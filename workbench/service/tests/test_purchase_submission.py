@@ -374,8 +374,8 @@ def test_saved_uneven_amount_is_sent_without_retyping_quantity(store):
     item = next(row for row in listing['items'] if row['sku'] == 'A')
     alloc = item['allocations'][0]
     assert Decimal(alloc['quantity']) == Decimal('22')
-    assert Decimal(alloc['details']['amount']) == Decimal('60.97')
-    assert Decimal(alloc['details']['unit_price']).as_tuple().exponent >= -12
+    assert alloc['details']['amount'] == '60.97'
+    assert alloc['details']['unit_price'] == '2.771'
     raw = format((Decimal('60.97') / Decimal('22')).normalize(), 'f')
     assert Decimal(raw).as_tuple().exponent < -12
     with engine.store.connect(write=True) as db:
@@ -384,14 +384,14 @@ def test_saved_uneven_amount_is_sent_without_retyping_quantity(store):
     body = draft_body(listing, item, alloc)
     assert 'quantity' not in body and 'amount' not in body
     qty, price, money = saved_deal('22', '60.97', raw)
-    assert Decimal(qty) == Decimal('22') and Decimal(money) == Decimal('60.97')
-    assert abs(Decimal(price) * Decimal(qty) - Decimal(money)) <= Decimal('0.01')
+    assert qty == '22' and price == '2.771' and money == '60.97'
+    assert Decimal(price) * Decimal(qty) == Decimal('60.962')
+    assert abs(Decimal('60.962') - Decimal('60.97')) <= Decimal('0.02')
     result = engine.submit_erp_draft(ACTOR, body)
     assert result['detail'] != 'purchase_number_invalid'
     assert result['status'] == 'submitted' and adapter.writes == 1
     with engine.store.connect() as db:
         payload = json.loads(db.execute('SELECT payload FROM purchase_submission_intents').fetchone()[0])
     line = payload['request']['line']
-    assert line['quantity'] == '22' and line['amount'] == '60.97'
+    assert line['quantity'] == '22' and line['unit_price'] == '2.771' and line['amount'] == '60.97'
     assert line['tax_basis'] == '含税' and line['platform_order_no'] == 'CG20261029001'
-    assert abs(Decimal(line['unit_price']) * Decimal('22') - Decimal('60.97')) <= Decimal('0.01')

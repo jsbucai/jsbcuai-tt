@@ -652,7 +652,7 @@ class PurchaseWorkspace:
             if details['pack_count'] or details['pack_size']:
                 if decimal(details['pack_count']) <= 0 or decimal(details['pack_size']) <= 0 or decimal(details['pack_count']) * decimal(details['pack_size']) != qty:
                     raise ValueError('包数 × 每包支数必须等于实际采购支数')
-            unit = (amount / qty).quantize(Decimal('1e-12'), rounding=ROUND_HALF_UP)
+            unit = (amount / qty).quantize(Decimal('0.001'), rounding=ROUND_HALF_UP)
             details.update(amount=number(amount), unit_price=number(unit), tax_basis=tax_basis,
                            recorded_by=user['display_name'] if 'display_name' in user else user['id'],
                            original_plan_quantity=a['quantity'], recorded_source_token=body['source_token'])

@@ -33,7 +33,7 @@ from time import time
 from zoneinfo import ZoneInfo
 
 from .purchase_submission import (ErpPurchaseDraft, PreparedPurchaseDraft, PurchaseAdapterCapabilities,
-    PurchaseDraftLookup, PurchaseDraftRequest, PurchaseSubmissionBlocked, _hash)
+    PurchaseDraftLookup, PurchaseDraftRequest, PurchaseSubmissionBlocked, _hash, price_amount_gap)
 from .sales_pricing import quote_basis, quote_price
 
 OFFICIAL_WRITE_METHOD = 'erp.purchaseorder.add'
@@ -323,7 +323,7 @@ class PurchaseOrderDraftAdapter:
                 raise PurchaseDirectoryError('商品或仓库身份与采购行不一致')
             quantity, price = _money(request.line.quantity), _money(request.line.unit_price)
             amount = Decimal(str(request.line.amount))
-            if not amount.is_finite() or abs(price * quantity - amount) > Decimal('0.01'):
+            if not amount.is_finite() or abs(price * quantity - amount) > price_amount_gap(quantity):
                 raise PurchaseDirectoryError('单价乘数量与成交金额不一致')
             untaxed, gross, tax = erp_line_prices(quantity, price, request.line.tax_basis)
             moment = self._moment()

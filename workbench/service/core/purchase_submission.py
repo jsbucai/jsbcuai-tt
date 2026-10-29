@@ -235,28 +235,34 @@ def _number_text(value, positive=False):
     return format(_number(value, positive).normalize(), 'f')
 
 
-# Twelve places is the finest ``_number`` accepts. amount/qty often repeats past that.
-_PRICE_STEP = Decimal('1e-12')
+# Deal unit prices are kept to 3 decimal places, e.g. 60.97 / 22 支 → 2.771.
+_PRICE_STEP = Decimal('0.001')
+
+
+def price_amount_gap(quantity):
+    """How far a 3-decimal unit price may sit from the real line amount.
+
+    Half of the last kept digit, times the quantity. At least one cent, so a
+    short line stays as strict as before. 2.771 × 22 = 60.962, eight thousandths
+    away from the deal amount 60.97.
+    """
+    qty = _number(quantity, True)
+    return max(Decimal('0.01'), Decimal('0.0005') * qty)
 
 
 def saved_deal(quantity, amount, unit_price):
-    """Use the saved quantity and amount. Rebuild a unit price the checker allows.
+    """Use the saved quantity and the real deal amount. Round only the unit price.
 
-    A line total such as 60.97 for 22 支 divides to 27 decimal places. That
-    price is already on the allocation; the confirm dialog does not send it
-    again. Rejecting it blocked every write of an uneven deal.
+    The confirm dialog does not send quantity or amount again. 60.97 / 22
+    repeats for 27 places; older rows still store that full string. The amount
+    stays 60.97. It is not replaced by the rounded price times the quantity.
+    The stored ``unit_price`` is not reused; three decimals are taken from the amount.
     """
+    del unit_price
     qty = _number(quantity, True)
     money = _number(amount)
-    price = None
-    if unit_price not in (None, ''):
-        try:
-            price = _number(unit_price)
-        except PurchaseSubmissionBlocked:
-            price = None
-    if price is None or abs(price * qty - money) > Decimal('0.01'):
-        price = (money / qty).quantize(_PRICE_STEP, rounding=ROUND_HALF_UP)
-    if price.as_tuple().exponent < -12 or abs(price * qty - money) > Decimal('0.01'):
+    price = (money / qty).quantize(_PRICE_STEP, rounding=ROUND_HALF_UP)
+    if abs(price * qty - money) > price_amount_gap(qty):
         raise PurchaseSubmissionBlocked('purchase_number_invalid', 400)
     return _number_text(qty, True), _number_text(price), _number_text(money)
 
