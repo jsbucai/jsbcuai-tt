@@ -24,7 +24,7 @@ import uuid
 from contextlib import contextmanager
 from dataclasses import asdict, dataclass
 from datetime import datetime, timezone
-from decimal import Decimal, InvalidOperation
+from decimal import Decimal, InvalidOperation, ROUND_HALF_UP
 from time import time
 from typing import Protocol
 
@@ -235,6 +235,32 @@ def _number_text(value, positive=False):
     return format(_number(value, positive).normalize(), 'f')
 
 
+# Twelve places is the finest ``_number`` accepts. amount/qty often repeats past that.
+_PRICE_STEP = Decimal('1e-12')
+
+
+def saved_deal(quantity, amount, unit_price):
+    """Use the saved quantity and amount. Rebuild a unit price the checker allows.
+
+    A line total such as 60.97 for 22 支 divides to 27 decimal places. That
+    price is already on the allocation; the confirm dialog does not send it
+    again. Rejecting it blocked every write of an uneven deal.
+    """
+    qty = _number(quantity, True)
+    money = _number(amount)
+    price = None
+    if unit_price not in (None, ''):
+        try:
+            price = _number(unit_price)
+        except PurchaseSubmissionBlocked:
+            price = None
+    if price is None or abs(price * qty - money) > Decimal('0.01'):
+        price = (money / qty).quantize(_PRICE_STEP, rounding=ROUND_HALF_UP)
+    if price.as_tuple().exponent < -12 or abs(price * qty - money) > Decimal('0.01'):
+        raise PurchaseSubmissionBlocked('purchase_number_invalid', 400)
+    return _number_text(qty, True), _number_text(price), _number_text(money)
+
+
 def _restore(value):
     request = dict(value['request'])
     request['line'] = PurchaseDraftLine(**request['line'])
@@ -382,10 +408,10 @@ class PurchaseSubmission:
         identity = '|'.join(text(item.get(key)) for key in ('profile_id', 'warehouse_id', 'product_id', 'sku_id', 'base_unit'))
         if not all(identity.split('|')) or not text(item.get('sku')):
             raise PurchaseSubmissionBlocked('purchase_product_unavailable')
+        quantity, price, money = saved_deal(alloc['quantity'], details.get('amount'), details.get('unit_price'))
         line = PurchaseDraftLine(
             line_no, allocation_id, order_no, line_no, alloc['supplier_id'], text(supplier['erp_id']),
-            text(item.get('sku')), identity, _number_text(alloc['quantity'], True),
-            _number_text(details.get('unit_price')), _number_text(details.get('amount')), tax,
+            text(item.get('sku')), identity, quantity, price, money, tax,
             text(details.get('note'))[:500], text(details.get('delivery_date'))[:10])
         return row, supplier, line
 

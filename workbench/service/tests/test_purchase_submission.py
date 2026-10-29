@@ -344,3 +344,54 @@ def test_draft_confirmation_and_role_are_required(store):
     assert adapter.writes == 0
     with engine.store.connect() as db:
         assert db.execute('SELECT count(*) FROM purchase_submission_attempts').fetchone()[0] == 0
+
+
+def test_saved_uneven_amount_is_sent_without_retyping_quantity(store):
+    """22 支 at 含税 ¥60.97. The confirm box does not send quantity or amount again.
+
+    60.97 / 22 repeats for 27 places. Lines recorded before the price was rounded
+    still have that full string, and the checker used to reject it.
+    """
+    from decimal import Decimal
+    from core.purchase_submission import saved_deal
+    from test_purchase_workspace import inventory, receipt, seed
+    product = inventory(available='-22')
+    seed(store, [product], [receipt(product, 'S', '2026-10-01')])
+    engine, adapter = make(store)
+    listing = engine.listing(ACTOR, {})
+    item = listing['items'][0]
+    engine.mutate(ACTOR, {'action': 'review_ack', 'source_token': listing['source_token'],
+        'items': [{'id': item['id'], 'version': item['version']}], 'idempotency_key': str(uuid.uuid4()),
+        'note': '已核对需求'})
+    listing = engine.listing(ACTOR, {})
+    item = next(row for row in listing['items'] if row['sku'] == 'A')
+    alloc = item['allocations'][0]
+    engine.mutate(ACTOR, {'action': 'record_purchase', 'source_token': listing['source_token'],
+        'items': [{'id': item['id'], 'version': item['version']}], 'idempotency_key': str(uuid.uuid4()),
+        'allocation_id': alloc['id'], 'quantity': '22', 'amount': '60.97', 'tax_basis': '含税',
+        'platform_order_no': 'CG20261029001'})
+    listing = engine.listing(ACTOR, {})
+    item = next(row for row in listing['items'] if row['sku'] == 'A')
+    alloc = item['allocations'][0]
+    assert Decimal(alloc['quantity']) == Decimal('22')
+    assert Decimal(alloc['details']['amount']) == Decimal('60.97')
+    assert Decimal(alloc['details']['unit_price']).as_tuple().exponent >= -12
+    raw = format((Decimal('60.97') / Decimal('22')).normalize(), 'f')
+    assert Decimal(raw).as_tuple().exponent < -12
+    with engine.store.connect(write=True) as db:
+        db.execute("UPDATE purchase_workspace_allocations SET details=json_set(details, '$.unit_price', ?) WHERE id=?",
+                   (raw, alloc['id']))
+    body = draft_body(listing, item, alloc)
+    assert 'quantity' not in body and 'amount' not in body
+    qty, price, money = saved_deal('22', '60.97', raw)
+    assert Decimal(qty) == Decimal('22') and Decimal(money) == Decimal('60.97')
+    assert abs(Decimal(price) * Decimal(qty) - Decimal(money)) <= Decimal('0.01')
+    result = engine.submit_erp_draft(ACTOR, body)
+    assert result['detail'] != 'purchase_number_invalid'
+    assert result['status'] == 'submitted' and adapter.writes == 1
+    with engine.store.connect() as db:
+        payload = json.loads(db.execute('SELECT payload FROM purchase_submission_intents').fetchone()[0])
+    line = payload['request']['line']
+    assert line['quantity'] == '22' and line['amount'] == '60.97'
+    assert line['tax_basis'] == '含税' and line['platform_order_no'] == 'CG20261029001'
+    assert abs(Decimal(line['unit_price']) * Decimal('22') - Decimal('60.97')) <= Decimal('0.01')

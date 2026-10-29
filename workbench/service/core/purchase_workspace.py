@@ -1,6 +1,6 @@
 """Shared, role-scoped procurement workspace; no browser or automatic payment."""
 from collections import Counter, defaultdict
-from decimal import Decimal
+from decimal import Decimal, ROUND_HALF_UP
 from hashlib import sha256
 from pathlib import Path
 from threading import Event, Thread
@@ -599,7 +599,6 @@ class PurchaseWorkspace:
             a=next((a for a in allocations if a['id']==body.get('allocation_id') and a['state']=='draft' and a['supplier_id']==q['supplier_id']),None)
             if not a:raise PurchaseConflict('报价须与当前供应商分配一致，请先分配再采纳')
             self._supplier(db,a['supplier_id'],row['profile_id'])
-            from decimal import ROUND_HALF_UP
             details={**json.loads(a['details']),**quotation,'quote_id':q['id'],
                      'amount':number((decimal(a['quantity'])*decimal(quotation['unit_price'])).quantize(Decimal('.01'),rounding=ROUND_HALF_UP))}
             db.execute('UPDATE purchase_workspace_allocations SET details=?,updated_at=? WHERE id=?',(dumps(details),now,a['id']))
@@ -653,7 +652,8 @@ class PurchaseWorkspace:
             if details['pack_count'] or details['pack_size']:
                 if decimal(details['pack_count']) <= 0 or decimal(details['pack_size']) <= 0 or decimal(details['pack_count']) * decimal(details['pack_size']) != qty:
                     raise ValueError('包数 × 每包支数必须等于实际采购支数')
-            details.update(amount=number(amount), unit_price=number(amount/qty), tax_basis=tax_basis,
+            unit = (amount / qty).quantize(Decimal('1e-12'), rounding=ROUND_HALF_UP)
+            details.update(amount=number(amount), unit_price=number(unit), tax_basis=tax_basis,
                            recorded_by=user['display_name'] if 'display_name' in user else user['id'],
                            original_plan_quantity=a['quantity'], recorded_source_token=body['source_token'])
             db.execute("UPDATE purchase_workspace_allocations SET quantity=?,state='ordered',details=?,updated_at=? WHERE id=?",
